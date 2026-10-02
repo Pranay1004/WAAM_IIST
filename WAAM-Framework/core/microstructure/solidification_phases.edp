@@ -1,0 +1,186 @@
+// ============================================================
+// MICROSTRUCTURE MODULE: Solidification + Phase Transformations
+// Append to main thermal solution .edp script AFTER cooling
+//
+// STEEL-ONLY REFERENCE MODULE (ER70S-6 / low-carbon steel).
+// For Ti-6Al-4V / 316L / IN625 / AlSi10Mg use the alloy-specific
+// kinetics in codegen/edp_builder.py::_get_alloy_kinetics_freefem_code()
+// (Burgers BOR / WRC-1992 / Scheil / cellular). This file must NOT be
+// applied to non-steel alloys.
+//
+// Physics:
+//   1. G/R solidification map from thermal gradient at solidus
+//   2. JMAK kinetics for diffusional phases (ferrite, pearlite, bainite)
+//   3. Koistinen-Marburger for martensite
+//   4. Hardness prediction from phase mixture rule
+//
+// Requires: Tpeak, Temp fields from thermal solution
+//
+// LIMITATION (documented): GradT here is evaluated on the final cooled
+// Temp field, NOT the transient gradient at solidus crossing. We mitigate
+// by taking max(|grad Temp|, |grad Tpeak|) as the G proxy; true transient
+// G requires per-step capture in the main loop (see TdotCool/dt85Track).
+// ============================================================
+
+cout << " === MICROSTRUCTURE MODULE ===" << endl;
+
+// --- Solidification Map (G vs R) ---
+// G = |∇T| evaluated where T crosses solidus
+// R = v_scan * cos(θ) ≈ v_scan * (dT/dx) / |∇T|
+// G/R → morphology (columnar vs equiaxed)
+// G*R → cooling rate → secondary dendrite arm spacing
+
+Sh GradT, GradTpeak, SolidRate, GoverR, GtimesR, SDAS;
+
+// Compute thermal gradient magnitude at each node.
+// Use max(final Temp gradient, Tpeak gradient) as solidification-front proxy.
+GradT = sqrt(dx(Temp)^2 + dy(Temp)^2 + dz(Temp)^2);
+GradTpeak = sqrt(dx(Tpeak)^2 + dy(Tpeak)^2 + dz(Tpeak)^2);
+
+// For nodes that experienced melting (Tpeak > Tliq):
+//   G is evaluated at the solidification front (approximate using
+//   gradient at current temp near solidus, or from Tpeak history)
+//   R is approximated from scan velocity projection
+
+for(int iv=0; iv<Th.nv; iv++){
+    real Tp = Tpeak[][iv];
+    // Gate at the SOLIDUS, not the liquidus: a node with Tsol < Tp <= Tliq is
+    // in the mushy zone and DOES resolidify (its liquid fraction reaches zero),
+    // so it experienced a solidification front and must get G/R/SDAS values.
+    // The old Tp > Tliq gate zeroed SDAS for every partially-remelted node.
+    if(Tp > Tsol && psiActive[][iv] > 0.5){
+        // G proxy: max of final-field and Tpeak-history gradients.
+        real G = max(max(GradT[][iv], GradTpeak[][iv]), 1.0);  // K/m, clip to avoid /0
+
+        // R: scan speed projected onto solidification-front normal.
+        // Trailing-edge normal ~0.7*vscan on average (was 1.0*vscan: overestimates
+        // cooling rate ~30%). True R needs transient gradT at solidus crossing.
+        real R = 0.7*vscan;
+
+        GoverR[][iv]  = G / max(R, 1.e-8);   // K·s/m²
+        GtimesR[][iv] = G * R;                 // K/s (cooling rate)
+
+        // Secondary dendrite arm spacing (SDAS) empirical correlation
+        // λ₂ = A * (G*R)^(-n) [μm], A≈50, n≈0.33 for steel
+        real coolingRate = G * R;
+        if(coolingRate > 1.)
+            SDAS[][iv] = 50. * (coolingRate)^(-0.33);  // μm
+        else
+            SDAS[][iv] = 200.;  // very slow cooling → coarse dendrites
+
+    } else {
+        GoverR[][iv]  = 0.;
+        GtimesR[][iv] = 0.;
+        SDAS[][iv]    = 0.;
+    }
+}
+
+cout << "  Max G*R (cooling rate): " << GtimesR[].max << " K/s" << endl;
+{
+    // Min SDAS over MELTED nodes only (global min is 0 from unmelted nodes).
+    real sdasMin = 1.e30;
+    for(int iv=0; iv<Th.nv; iv++)
+        if(Tpeak[][iv] > Tsol && SDAS[][iv] > 0.)
+            sdasMin = min(sdasMin, SDAS[][iv]);
+    if(sdasMin > 1.e29) sdasMin = 0.;
+    cout << "  Min SDAS (melted only): " << sdasMin << " um" << endl;
+}
+
+// --- Solid-State Phase Transformations ---
+// For carbon/low-alloy steels: ferrite, pearlite, bainite, martensite
+
+// These use the Scheil additive rule for continuous cooling:
+// Sum(dt_i / tau_i(T)) = 1 at transformation start
+// Then JMAK: X = 1 - exp(-b * t^n) for isothermal holding
+//
+// For this implementation, we use the simplified approach:
+// Δt_{8/5} (cooling time 800→500°C) determines the CCT path.
+
+Sh dt85, fFerrite, fPearlite, fBainite, fMartensite, HVmap;
+
+// Compute Δt_{8/5} from Tpeak and estimated cooling rate
+// For WAAM with inter-pass cooling, Δt₈₅ ~ (800-500)/cooling_rate
+for(int iv=0; iv<Th.nv; iv++){
+    real Tp = Tpeak[][iv];
+    if(Tp > 800. && psiActive[][iv] > 0.5){
+        // Estimate cooling rate from G*R if available, else WAAM default.
+        // NOTE: main-loop transient dt85Track (tEnter800) supersedes this estimate
+        // whenever available; this standalone path is a fallback only.
+        real cr = GtimesR[][iv];
+        if(cr < 10.) cr = 50.;  // default estimate for WAAM
+        dt85[][iv] = 300. / max(cr, 1.);  // (800-500)/cooling_rate
+    } else {
+        dt85[][iv] = 0.;
+    }
+}
+
+// Phase fractions from simplified CCT relationships
+// (Specific to ER70S-6 / low-carbon steel; adjust for other alloys)
+//
+// Short Δt₈₅ (< 3s): mostly martensite
+// Medium Δt₈₅ (3-20s): bainite + some martensite
+// Long Δt₈₅ (20-100s): ferrite + pearlite
+// Very long (>100s): coarse ferrite + pearlite
+
+for(int iv=0; iv<Th.nv; iv++){
+    real dt = dt85[][iv];
+    if(dt < 0.1){
+        // Not in HAZ
+        fFerrite[][iv]    = 1.0;  // base metal (assume ferrite-pearlite)
+        fPearlite[][iv]   = 0.0;
+        fBainite[][iv]    = 0.0;
+        fMartensite[][iv] = 0.0;
+    } else if(dt < 3.){
+        // Very fast cooling → martensite dominant
+        fFerrite[][iv]    = 0.0;
+        fPearlite[][iv]   = 0.0;
+        fBainite[][iv]    = 0.1;
+        fMartensite[][iv] = 0.9;
+    } else if(dt < 10.){
+        // Fast cooling → mixed bainite + martensite
+        real fM = max(0., 0.9 - 0.1*(dt-3.));
+        real fB = 1.0 - fM;
+        fFerrite[][iv]    = 0.0;
+        fPearlite[][iv]   = 0.0;
+        fBainite[][iv]    = fB;
+        fMartensite[][iv] = fM;
+    } else if(dt < 50.){
+        // Medium cooling → bainite + ferrite
+        real fB = max(0., 1.0 - 0.02*(dt-10.));
+        real fF = 1.0 - fB;
+        fFerrite[][iv]    = fF;
+        fPearlite[][iv]   = 0.0;
+        fBainite[][iv]    = fB;
+        fMartensite[][iv] = 0.0;
+    } else {
+        // Slow cooling → ferrite + pearlite
+        real fP = min(0.4, 0.1 + 0.006*(dt-50.));
+        fFerrite[][iv]    = 1.0 - fP;
+        fPearlite[][iv]   = fP;
+        fBainite[][iv]    = 0.0;
+        fMartensite[][iv] = 0.0;
+    }
+}
+
+// Hardness from mixture rule
+// HV = Σ f_i * HV_i
+real HVf=150., HVp=250., HVb=350., HVm=550.;
+HVmap = fFerrite*HVf + fPearlite*HVp + fBainite*HVb + fMartensite*HVm;
+
+cout << "  Max HV: " << HVmap[].max << " (martensite-rich zones)" << endl;
+cout << "  Min HV: " << HVmap[].min << " (ferrite zones)" << endl;
+
+// --- Save microstructure results ---
+{
+    int[int] ord=[1,1,1,1,1,1,1,1,1,1];
+    savevtk(outdir+"waam_micro.vtu", Th,
+        Tpeak, GoverR, GtimesR, SDAS, dt85,
+        fFerrite, fBainite, fMartensite, fPearlite, HVmap,
+        dataname="Tpeak G_over_R G_times_R SDAS_um dt85_s fFerrite fBainite fMartensite fPearlite HV",
+        order=ord);
+}
+
+cout << " Microstructure saved: " << outdir << "waam_micro.vtu" << endl;
+cout << "   → Color by HV for hardness map" << endl;
+cout << "   → Color by SDAS_um for dendrite spacing" << endl;
+cout << "   → Color by G_over_R for columnar/equiaxed boundary" << endl;

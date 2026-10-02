@@ -1,0 +1,49 @@
+// ============================================================
+// HEAT SOURCE: CONICAL / FRUSTUM (KEYHOLE)
+// Linearly tapered Gaussian for keyhole laser / plasma arc welding
+//
+// The beam intensity varies linearly from top radius rt to
+// bottom radius rb over a depth d. Models deep penetration
+// sources (keyhole mode laser, plasma transferred arc).
+//
+// Parameters: rt (top radius), rb (bottom radius),
+//             d (penetration depth), Pweld
+// Reference: Goldak & Akhlaghi, "Computational Welding Mechanics",
+//            Springer, 2005, Ch. 3
+// ============================================================
+
+real rt = {{ rt }};   // top radius [m]
+real rb = {{ rb }};   // bottom radius [m]
+real dpen = {{ dpen }};  // penetration depth [m]
+
+// Local radius at height zeta (0=top of keyhole, dpen=bottom)
+// R(zeta) = rt + (rb - rt) * zeta / dpen
+
+{
+    real xT = xTorch;
+    real yT = yTorch;
+    real zT = zTorch;   // top of current layer
+
+    // Distance below top surface
+    real zeta = max(zT - z, 0.);  // depth into material
+
+    // Skip if outside keyhole depth
+    if(zeta <= dpen + 1.e-6){
+        real Rlocal = rt + (rb - rt)*zeta/dpen;
+        real r2xy = (x-xT)^2 + (y-yT)^2;
+
+        // Volume-normalised intensity.
+        // Layer power at depth zeta is q(zeta)*pi*R(zeta)^2 with the Gaussian
+        // plane integral = Q0*pi*R^2/3. Choosing
+        //   Q0 = 9*P / (pi*d*(rt^2 + rt*rb + rb^2))
+        // gives  int_0^d Q0*pi*R(zeta)^2/3 dzeta = P  EXACTLY.
+        // (The old Q0 = P/V form integrated to only P/3 -- a 3x under-power.)
+        real Q0cone = 9.*{{ Pweld }}/( {{ pi }}*dpen*(rt^2 + rt*rb + rb^2) );
+
+        Tsource = Q0cone * exp(-3.*r2xy/(Rlocal^2))
+                * (Rlocal > 1.e-9 ? 1. : 0.)
+                * psiActive;
+    } else {
+        Tsource = 0.;
+    }
+}

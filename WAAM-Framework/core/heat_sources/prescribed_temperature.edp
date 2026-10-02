@@ -1,0 +1,41 @@
+// ============================================================
+// HEAT SOURCE: PRESCRIBED TEMPERATURE
+// No volumetric source. Instead, directly impose T = Tliq
+// on freshly activated elements.
+//
+// Fastest method — useful for:
+//   - Inherent strain calibration
+//   - Large-scale models where exact pool shape doesn't matter
+//   - Sensitivity studies (thermal cycle shape is prescribed)
+//
+// Implementation: After activation, set Temp = Tliq for all
+// nodes in the current activation zone.
+// ============================================================
+
+// No Tsource computation needed — source term is zero
+Tsource = 0.;
+
+// Instead, after solving the thermal system, override temperature
+// in freshly activated nodes:
+// (This block runs AFTER the matrix solve)
+{
+    real xT = xTorch;
+    real yT = yTorch;
+    real zT = zTorch;
+    real Ractivate = {{ Ractivate }};  // activation radius [m]
+
+    for(int iv=0; iv<Th.nv; iv++){
+        real xv = Th(iv).x;
+        real yv = Th(iv).y;
+        real zv = Th(iv).z;
+        real r2 = (xv-xT)^2 + (yv-yT)^2 + (zv-zT)^2;
+        // If within activation radius AND just activated this step
+        if(r2 < Ractivate^2 && psiActive[][iv] > 0.5){
+            // Only override if this node was quiet in previous step
+            // (i.e., freshly activated)
+            if(Temp0[][iv] < {{ Tamb }} + 10.){
+                Temp[][iv] = {{ Tliq }};
+            }
+        }
+    }
+}

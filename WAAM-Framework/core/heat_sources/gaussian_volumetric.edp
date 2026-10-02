@@ -1,0 +1,21 @@
+// ============================================================
+// HEAT SOURCE: 3D GAUSSIAN VOLUMETRIC
+// Isotropic volumetric Gaussian for laser-DED, electron beam
+//
+// Parameters: Rbeam (beam radius), Pweld, eta (absorption)
+// q(r) = Q0 * exp(-3*r^2/R^2) where r = distance from beam centre
+// ============================================================
+
+real Rbeam  = {{ Rbeam }};
+// Q0 = 3*sqrt(3)*P/(pi*sqrt(pi)*R^3) since int exp(-3 r^2/R^2) dV = R^3*pi*sqrt(pi)/(3*sqrt(3)).
+// (The 6*sqrt(3) constant integrated to 2*P.)
+real Q0gauss = 3.*sqrt(3.)*{{ Pweld }}/({{ pi }}*sqrt({{ pi }})*Rbeam*Rbeam*Rbeam);
+
+{
+    real xT = xTorch;
+    real yT = yTorch;
+    real zT = zTorch;
+    real r2 = (x-xT)^2 + (y-yT)^2 + (z-zT)^2;
+
+    Tsource = Q0gauss * exp(-3.*r2/(Rbeam^2)) * psiActive;
+}

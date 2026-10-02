@@ -1,0 +1,34 @@
+// ============================================================
+// HEAT SOURCE: GOLDAK DOUBLE ELLIPSOID
+// Standard moving volumetric source for arc welding / GMAW-WAAM
+//
+// Parameters: af, ar, bG, cG, ff, fr, Pweld
+// Reference: Goldak et al., "A new finite element model for
+//            welding heat sources", Metall. Trans. B, 1984
+// ============================================================
+
+// Front and rear peak intensities [W/m^3]
+// Note: ff and fr appear ONLY in numerator (not denominator)
+// Q0 = 3*sqrt(3)*f*P/(pi*sqrt(pi)*abc) with ff+fr=2: the tanh front/rear split
+// makes each side carry f*P/2, so int Q dV = (ff+fr)*P/2 = P exactly.
+// (The textbook-looking 6*sqrt(3) constant yields f*P per side -> 2*P total.)
+real Q0f = 3.*sqrt(3.)*{{ ff }}*{{ Pweld }}/({{ pi }}*sqrt({{ pi }})*{{ af }}*{{ bG }}*{{ cG }});
+real Q0r = 3.*sqrt(3.)*{{ fr }}*{{ Pweld }}/({{ pi }}*sqrt({{ pi }})*{{ ar }}*{{ bG }}*{{ cG }});
+
+// Compute source field at current torch position
+{
+    real xT = xTorch;
+    real yT = yTorch;
+    real zT = zTorch;
+
+    // Smooth front/rear transition using tanh
+    real epsSplit = 0.001;
+    real frontFrac = 0.5*(1. + tanh((x - xT)/epsSplit));
+    real rearFrac  = 1. - frontFrac;
+
+    Tsource = (Q0f*exp(-3.*(x-xT)^2/{{ af }}^2)*frontFrac
+             + Q0r*exp(-3.*(x-xT)^2/{{ ar }}^2)*rearFrac)
+            * exp(-3.*(y-yT)^2/{{ bG }}^2)
+            * exp(-3.*(z-zT)^2/{{ cG }}^2)
+            * psiActive;
+}

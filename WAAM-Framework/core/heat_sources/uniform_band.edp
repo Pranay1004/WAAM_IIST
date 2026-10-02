@@ -1,0 +1,35 @@
+// ============================================================
+// HEAT SOURCE: UNIFORM BAND
+// Constant flux over a rectangular moving patch.
+// Simplest model — useful for wide-bead deposition, brazing,
+// or as a baseline for calibration studies.
+//
+// Parameters: aU (half-length X), bU (half-width Y),
+//             cU (half-depth Z), Pweld
+// q = P / (8*aU*bU*cU) inside the box, 0 outside
+// ============================================================
+
+real aU = {{ aU }};   // half-length in scan direction [m]
+real bU = {{ bU }};   // half-width transverse [m]
+real cU = {{ cU }};   // half-depth [m]
+
+{
+    real xT = xTorch;
+    real yT = yTorch;
+    real zT = zTorch;
+
+    // Uniform volumetric source inside the box
+    real Q0uni = {{ Pweld }}/(8.*aU*bU*cU);
+
+    // Box indicator function using smooth tanh boundaries
+    // (avoids sharp discontinuity that causes integration error)
+    real epsBox = 0.5e-3;  // smoothing width [m]
+    real fxP = 0.5*(1. + tanh((x - (xT-aU))/epsBox));
+    real fxN = 0.5*(1. + tanh(((xT+aU) - x)/epsBox));
+    real fyP = 0.5*(1. + tanh((y - (yT-bU))/epsBox));
+    real fyN = 0.5*(1. + tanh(((yT+bU) - y)/epsBox));
+    real fzP = 0.5*(1. + tanh((z - (zT-cU))/epsBox));
+    real fzN = 0.5*(1. + tanh(((zT+cU) - z)/epsBox));
+
+    Tsource = Q0uni * fxP*fxN * fyP*fyN * fzP*fzN * psiActive;
+}

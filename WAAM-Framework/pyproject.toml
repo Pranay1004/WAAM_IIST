@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "waam-framework"
+version = "0.1.0"
+description = "Wire Arc Additive Manufacturing (WAAM) multi-physics FEM framework: STL/STEP slicing, conformal meshing, FreeFEM++ thermal-mechanical simulation (Goldak heat source), and publication-grade postprocessing."
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.22",
+    "matplotlib>=3.5",
+    "pyvista>=0.40",
+    "imageio>=2.20",
+    "trimesh>=3.20",
+    "gmsh>=4.11",
+    "vtk>=9.1",
+]
+
+[project.optional-dependencies]
+gui = ["pywebview>=4.0"]
+dev = ["ruff>=0.4"]
+
+[tool.setuptools]
+# Path-based project: source tree is consumed in place (sys.path ROOT),
+# so no packages are installed — the wheel exists to bootstrap dependencies.
+packages = []
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = ["waam_output", "waam_output_live", "generated_edps", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7"]

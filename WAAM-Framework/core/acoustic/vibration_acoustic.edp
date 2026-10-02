@@ -1,0 +1,218 @@
+// ============================================================
+// ACOUSTIC / VIBRATION MODULE
+//
+// Three capabilities:
+//   1. Modal analysis: find natural frequencies of the substrate+deposit
+//   2. Harmonic forced vibration: response to ultrasonic excitation
+//   3. Vibration stress relief: reduce residual stress by cyclic loading
+//
+// Requires: Th (mesh), material properties, psiActive
+// ============================================================
+
+cout << " === VIBRATION / ACOUSTIC MODULE ===" << endl;
+
+// ============================================================
+// 1. MODAL ANALYSIS
+//    Solve eigenvalue problem: (K - ω²M)φ = 0
+//    Find first N natural frequencies and mode shapes
+// ============================================================
+
+int nModes = 6;  // number of modes to compute
+
+// Mass and stiffness using active material only
+varf aStiff([ux,uy,uz],[vx,vy,vz]) =
+    int3d(Th)(
+        lambdaL*(dx(ux)+dy(uy)+dz(uz))*(dx(vx)+dy(vy)+dz(vz))
+      + 2.*muL*(
+            dx(ux)*dx(vx) + dy(uy)*dy(vy) + dz(uz)*dz(vz)
+          + 0.5*(dy(ux)+dx(uy))*(dy(vx)+dx(vy))
+          + 0.5*(dz(ux)+dx(uz))*(dz(vx)+dx(vz))
+          + 0.5*(dz(uy)+dy(uz))*(dz(vy)+dy(vz))
+        )
+    )
+    + on(1, ux=0., uy=0., uz=0.)
+    ;
+
+varf aMass([ux,uy,uz],[vx,vy,vz]) =
+    int3d(Th)(rhoS*(ux*vx + uy*vy + uz*vz))
+    + on(1, ux=0., uy=0., uz=0.)
+    ;
+
+matrix K = aStiff(Vh,Vh);
+matrix M = aMass(Vh,Vh);
+
+// Solve eigenvalue problem
+real[int] eigenvalues(nModes);
+Vh[int] [ex,ey,ez](nModes);
+
+// Using shift-invert with sigma=0 to find lowest modes
+// Note: This requires ARPACK (loaded by default in FreeFEM)
+int nconv = EigenValue(K, M, sym=true, sigma=0.,
+                       value=eigenvalues, vector=ex,
+                       nev=nModes, tol=1.e-8);
+
+cout << "  Natural frequencies:" << endl;
+for(int i=0; i<min(nconv, nModes); i++){
+    real omega = sqrt(max(eigenvalues[i], 0.));
+    real freq  = omega / (2.*3.14159265);
+    cout << "    Mode " << i+1 << ":  f = " << freq << " Hz"
+         << "  ω = " << omega << " rad/s" << endl;
+}
+
+// Save first 3 mode shapes
+for(int im=0; im<min(3, nconv); im++){
+    Sh modeDisp;
+    modeDisp = sqrt(ex[im]^2 + ey[im]^2 + ez[im]^2);
+    {
+        int[int] ord=[1,1,1,1];
+        savevtk(outdir+"mode_"+im+".vtu", Th,
+            ex[im], ey[im], ez[im], modeDisp,
+            dataname="ModeX ModeY ModeZ ModeMag",
+            order=ord);
+    }
+}
+cout << "  Mode shapes saved: mode_0.vtu ... mode_2.vtu" << endl;
+
+// ============================================================
+// 2. HARMONIC FORCED VIBRATION
+//    Complex solve: (K(1 + i*omega*beta) - omega^2*M + i*omega*alpha*M) u = F
+//    Response reported as the amplitude |u| = sqrt(Re^2 + Im^2).
+//    (The old real-only solve silently dropped the whole damping matrix C
+//     -- both the i*omega*alpha*M and i*omega*beta*K terms.)
+// ============================================================
+
+real fExcite  = 20000.;   // excitation frequency [Hz] (ultrasonic)
+real ampForce = 100.;     // force amplitude [N]
+real dampRatio = 0.02;    // modal damping ratio
+
+real omegaE = 2.*3.14159265*fExcite;
+real alpha_R = dampRatio*omegaE;    // Rayleigh damping: C = alpha*M + beta*K
+real beta_R  = dampRatio/omegaE;
+
+cout << "  Harmonic analysis at f=" << fExcite << " Hz (complex solve, zeta="
+     << dampRatio << ", omega=" << omegaE << " rad/s)" << endl;
+
+// Dynamic stiffness (complex):
+//   K(1 + i*omega*beta) - omega^2*M + i*omega*alpha*M
+fespace Vhc(Th, [P1,P1,P1], complex);
+
+varf aHarmonicC([ux,uy,uz],[vx,vy,vz]) =
+    int3d(Th)(
+        (1. + ii*omegaE*beta_R)*lambdaL*(dx(ux)+dy(uy)+dz(uz))*(dx(vx)+dy(vy)+dz(vz))
+      + (1. + ii*omegaE*beta_R)*2.*muL*(
+            dx(ux)*dx(vx) + dy(uy)*dy(vy) + dz(uz)*dz(vz)
+          + 0.5*(dy(ux)+dx(uy))*(dy(vx)+dx(vy))
+          + 0.5*(dz(ux)+dx(uz))*(dz(vx)+dx(vz))
+          + 0.5*(dz(uy)+dy(uz))*(dz(vy)+dy(vz))
+        )
+      + rhoS*(-omegaE^2 + ii*omegaE*alpha_R)*(ux*vx + uy*vy + uz*vz)
+    )
+    + on(1, ux=0., uy=0., uz=0.)
+    ;
+
+// Excitation force: Gaussian patch load centred at deposit top, in Z.
+// Normalised so the INTEGRATED force equals ampForce exactly (within the
+// infinite-domain Gaussian integral): the old un-normalised form delivered
+// ampForce * pi^1.5 * rPatch^3 ~ 1e-4 N while claiming 100 N.
+real xF = LxW/2.;
+real yF = yDepCentre;
+real zF = HzTot;
+real rPatch = 0.005;  // 5mm radius patch
+real zPatch = pow(3.14159265, 1.5)*rPatch^3;  // int exp(-r^2/rp^2) dV over R^3
+
+varf lHarmonicC([ux,uy,uz],[vx,vy,vz]) =
+    int3d(Th)(
+        (ampForce/zPatch) * exp(-((x-xF)^2+(y-yF)^2+(z-zF)^2)/(rPatch^2))
+        * vz  // force in Z direction
+    )
+    + on(1, ux=0., uy=0., uz=0.)
+    ;
+
+Vhc [uhx,uhy,uhz];  // complex harmonic response
+matrix KH = aHarmonicC(Vhc,Vhc);
+complex[int] fH = lHarmonicC(0,Vhc);
+set(KH, solver=UMFPACK);
+uhx[] = KH^-1*fH;   // assigns all 3 components (FreeFEM block idiom)
+
+// Amplitude fields (real): |u|, |sigma_vm| (component-modulus upper bound)
+Sh vibDisp, vibStress;
+vibDisp = sqrt(abs(uhx)^2 + abs(uhy)^2 + abs(uhz)^2);
+
+cout << "  Max vibration amplitude: " << vibDisp[].max*1.e6 << " um" << endl;
+
+// Von Mises vibrational stress from complex strain (component moduli:
+// a conservative amplitude estimate, exact only for proportional response)
+{
+    Sh vsx,vsy,vsz,vsxy,vsxz,vsyz;
+    vsx = abs(lambdaL*(dx(uhx)+dy(uhy)+dz(uhz)) + 2.*muL*dx(uhx));
+    vsy = abs(lambdaL*(dx(uhx)+dy(uhy)+dz(uhz)) + 2.*muL*dy(uhy));
+    vsz = abs(lambdaL*(dx(uhx)+dy(uhy)+dz(uhz)) + 2.*muL*dz(uhz));
+    vsxy = abs(muL*(dy(uhx)+dx(uhy)));
+    vsxz = abs(muL*(dz(uhx)+dx(uhz)));
+    vsyz = abs(muL*(dz(uhy)+dy(uhz)));
+    vibStress = sqrt(0.5*((vsx-vsy)^2+(vsy-vsz)^2+(vsz-vsx)^2)
+                    +3.*(vsxy^2+vsxz^2+vsyz^2));
+}
+
+cout << "  Max vibrational stress: " << vibStress[].max/1.e6 << " MPa" << endl;
+
+{
+    Sh vibUxr, vibUxi, vibUyr, vibUyi, vibUzr, vibUzi;
+    vibUxr = real(uhx); vibUxi = imag(uhx);
+    vibUyr = real(uhy); vibUyi = imag(uhy);
+    vibUzr = real(uhz); vibUzi = imag(uhz);
+    int[int] ord=[1,1,1,1,1,1,1,1];
+    savevtk(outdir+"waam_vibration.vtu", Th,
+        vibUxr, vibUxi, vibUyr, vibUyi, vibUzr, vibUzi,
+        vibDisp, vibStress,
+        dataname="VibUx_Re VibUx_Im VibUy_Re VibUy_Im VibUz_Re VibUz_Im VibDispMag VibSigMises",
+        order=ord);
+}
+
+// ============================================================
+// 3. VIBRATION STRESS RELIEF (VSR)
+//    Superpose vibrational stress on residual stress
+//    Where total exceeds yield: local plastic flow → stress relaxation
+// ============================================================
+
+cout << "  [ESTIMATE] Vibration stress relief (yield-truncation model:" << endl;
+cout << "    no dynamic re-equilibrium, no cyclic plasticity, no mean-stress shift;" << endl;
+cout << "    residual + vibrational amplitude compared against RT yield)" << endl;
+
+Sh sigTotal, sigRelieved, reliefFraction;
+
+// Total stress = residual + vibrational (peak-to-peak)
+sigTotal = sigM + vibStress;
+
+// Check against yield strength at room temperature
+real sigY_RT = 350.e6;  // yield strength at RT [Pa]
+
+for(int iv=0; iv<Th.nv; iv++){
+    real sT = sigTotal[][iv];
+    real sR = sigM[][iv];
+    if(sT > sigY_RT && psiActive[][iv] > 0.5){
+        // Yield occurs: residual stress reduced to yield - vibrational
+        real sRelieved = max(sigY_RT - vibStress[][iv], 0.);
+        sigRelieved[][iv] = sRelieved;
+        reliefFraction[][iv] = (sR > 0.) ? (sR - sRelieved)/sR : 0.;
+    } else {
+        sigRelieved[][iv] = sR;
+        reliefFraction[][iv] = 0.;
+    }
+}
+
+cout << "  Max stress relief: " << reliefFraction[].max*100. << "%" << endl;
+cout << "  Residual stress before VSR: " << sigM[].max/1.e6 << " MPa" << endl;
+cout << "  Residual stress after VSR:  " << sigRelieved[].max/1.e6 << " MPa" << endl;
+
+{
+    int[int] ord=[1,1,1,1];
+    savevtk(outdir+"waam_vsr.vtu", Th,
+        sigM, sigRelieved, vibStress, reliefFraction,
+        dataname="SigResidual_Before SigResidual_After SigVibration ReliefFraction",
+        order=ord);
+}
+
+cout << " Vibration results saved to:" << endl;
+cout << "   " << outdir << "waam_vibration.vtu (mode shapes)" << endl;
+cout << "   " << outdir << "waam_vsr.vtu (stress relief)" << endl;

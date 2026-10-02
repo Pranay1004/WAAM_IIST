@@ -1,0 +1,289 @@
+{
+  "alloys": {
+    "SS308L": {
+      "name": "SS308L (AWS ER308L Stainless)",
+      "category": "Austenitic Stainless Steel",
+      "density": 7850.0,
+      "poisson_ratio": 0.30,
+      "solidus": 1402.0,
+      "liquidus": 1457.0,
+      "latent_heat": 270000.0,
+      "emissivity": 0.65,
+      "notes": "AWS ER308L wire for WAAM deposition of corrosion-resistant austenitic stainless steel. Cp band [Tsol,Tliq] constant at base + L/dT so trapezoid integral recovers latent heat exactly.",
+      "composition": {
+        "C": 0.02, "Cr": 20.0, "Ni": 10.0, "Mn": 1.8, "Si": 0.5, "Fe": 67.68
+      },
+      "conductivity": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1402, 1457, 2000],
+        "k": [15.0, 17.5, 20.0, 23.0, 26.0, 29.0, 31.0, 32.5, 32.5, 32.5]
+      },
+      "specific_heat": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1401.99, 1402, 1457, 1457.01, 2000],
+        "Cp": [500, 520, 550, 570, 590, 610, 630, 650, 5559.09, 5559.09, 800, 800]
+      },
+      "youngs_modulus": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1402, 1457],
+        "E": [200e9, 190e9, 178e9, 160e9, 135e9, 85e9, 35e9, 12e9, 1e9]
+      },
+      "yield_strength": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1402],
+        "sigma_y": [380e6, 330e6, 280e6, 230e6, 170e6, 60e6, 15e6, 2e6]
+      },
+      "thermal_expansion": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1402],
+        "alpha": [1.60e-5, 1.65e-5, 1.75e-5, 1.80e-5, 1.85e-5, 1.90e-5, 1.95e-5, 1.95e-5]
+      },
+      "phase_transformation": {
+        "solidification_mode": "FA",
+        "notes": "Primary delta-ferrite then austenite (WRC-1992 FA); FN computed from Cr_eq/Ni_eq in alloy kinetics."
+      },
+      "hardness_coefficients": {
+        "HV_austenite": 190, "HV_delta_ferrite": 215
+      }
+    },
+    "SS316L": {
+      "name": "SS316L (AISI 316L Stainless)",
+      "category": "Austenitic Stainless Steel",
+      "density": 7900.0,
+      "poisson_ratio": 0.30,
+      "solidus": 1375.0,
+      "liquidus": 1440.0,
+      "latent_heat": 260000.0,
+      "emissivity": 0.65,
+      "notes": "Marine and nuclear grade austenitic stainless steel with 2.5% Mo for pitting resistance.",
+      "composition": {
+        "C": 0.02, "Cr": 17.5, "Ni": 12.0, "Mo": 2.5, "Mn": 1.6, "Si": 0.5, "Fe": 65.88
+      },
+      "conductivity": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1375, 1440, 2000],
+        "k": [14.0, 16.5, 19.5, 22.5, 25.5, 28.0, 30.0, 32.0, 32.0, 32.0]
+      },
+      "specific_heat": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1374.99, 1375, 1440, 1440.01, 2000],
+        "Cp": [500, 520, 540, 560, 580, 600, 620, 640, 4640.0, 4640.0, 800, 800]
+      },
+      "youngs_modulus": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1375, 1440],
+        "E": [193e9, 185e9, 172e9, 155e9, 130e9, 80e9, 30e9, 10e9, 1e9]
+      },
+      "yield_strength": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1375],
+        "sigma_y": [290e6, 230e6, 180e6, 155e6, 120e6, 50e6, 10e6, 2e6]
+      },
+      "thermal_expansion": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1375],
+        "alpha": [1.60e-5, 1.70e-5, 1.80e-5, 1.85e-5, 1.90e-5, 1.95e-5, 2.00e-5, 2.00e-5]
+      },
+      "phase_transformation": {
+        "solidification_mode": "FA",
+        "notes": "Primary delta-ferrite then austenite (WRC-1992 FA); FN computed from Cr_eq/Ni_eq in alloy kinetics."
+      },
+      "hardness_coefficients": {
+        "HV_austenite": 180, "HV_delta_ferrite": 200
+      }
+    },
+    "ER70S-6": {
+      "name": "ER70S-6 (AWS Carbon Steel Solid Wire)",
+      "category": "Carbon Steel",
+      "density": 7870.0,
+      "poisson_ratio": 0.30,
+      "solidus": 1450.0,
+      "liquidus": 1520.0,
+      "latent_heat": 270000.0,
+      "emissivity": 0.70,
+      "notes": "AWS ER70S-6 mild-steel filler, default WAAM substrate/deposit. Cp includes Curie/eutectoid spike (720-780 C) and exact fusion-latent band [1450,1520] = 600 + 270000/70 = 4457.14 J/kgK. alpha dip at 800 C is ferrite -> austenite contraction.",
+      "composition": {
+        "C": 0.08, "Mn": 1.35, "Si": 0.65, "Cr": 0.05, "Ni": 0.03, "Mo": 0.01, "V": 0.005, "Cu": 0.02, "Fe": 97.805
+      },
+      "conductivity": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1449.99, 1450, 1520, 1520.01, 2000],
+        "k": [59.3, 54.5, 49.0, 43.5, 38.0, 34.6, 31.2, 27.0, 27.0, 27.0, 27.0, 27.0]
+      },
+      "specific_heat": {
+        "T": [25, 200, 400, 600, 660, 720, 780, 800, 1000, 1200, 1449.99, 1450, 1520, 1520.01, 2000],
+        "Cp": [446.7, 493.3, 546.7, 600.0, 2800.0, 5000.0, 1738.0, 650.0, 634.6, 619.2, 600.0, 4457.14, 4457.14, 800.0, 800.0]
+      },
+      "youngs_modulus": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1450, 1520],
+        "E": [210e9, 200e9, 186e9, 165e9, 135e9, 90e9, 40e9, 5e9, 1e9]
+      },
+      "yield_strength": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1450, 1520],
+        "sigma_y": [400e6, 340e6, 280e6, 200e6, 120e6, 50e6, 15e6, 2e6, 1e6]
+      },
+      "thermal_expansion": {
+        "T": [25, 200, 400, 600, 750, 800, 900, 1000, 1450],
+        "alpha": [1.20e-5, 1.30e-5, 1.40e-5, 1.50e-5, 1.60e-5, 6.00e-6, 1.30e-5, 1.50e-5, 1.50e-5]
+      },
+      "phase_transformation": {
+        "Ms": 475,
+        "alpha_KM": 0.011,
+        "notes": "Koistinen-Marburger athermal martensite below Ms; diffusional ferrite/pearlite/bainite partition via dt85."
+      },
+      "hardness_coefficients": {
+        "HV_ferrite": 140, "HV_pearlite": 175, "HV_bainite": 280, "HV_martensite": 400
+      }
+    },
+    "Ti-6Al-4V": {
+      "name": "Ti-6Al-4V (Grade 5 Titanium)",
+      "category": "Titanium Alloy",
+      "density": 4430.0,
+      "poisson_ratio": 0.34,
+      "solidus": 1604.0,
+      "liquidus": 1660.0,
+      "latent_heat": 370000.0,
+      "emissivity": 0.50,
+      "notes": "Alpha-beta titanium alloy for aerospace and biomedical WAAM with high specific strength.",
+      "composition": {
+        "Al": 6.0, "V": 4.0, "Fe": 0.25, "O": 0.18, "Ti": 89.57
+      },
+      "conductivity": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1604, 1660, 2000],
+        "k": [6.7, 8.7, 11.0, 13.5, 16.0, 19.0, 22.0, 25.0, 28.0, 28.0]
+      },
+      "specific_heat": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1603.99, 1604, 1660, 1660.01, 2000],
+        "Cp": [526, 565, 606, 651, 690, 730, 750, 780, 7387.14, 7387.14, 830, 830]
+      },
+      "youngs_modulus": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1604, 1660],
+        "E": [114e9, 105e9, 93e9, 78e9, 55e9, 30e9, 10e9, 2e9, 0.5e9]
+      },
+      "yield_strength": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1604],
+        "sigma_y": [880e6, 700e6, 550e6, 380e6, 150e6, 40e6, 10e6, 1e6]
+      },
+      "thermal_expansion": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1604],
+        "alpha": [8.6e-6, 9.2e-6, 9.7e-6, 10.1e-6, 10.5e-6, 10.8e-6, 11.0e-6, 11.2e-6]
+      },
+      "phase_transformation": {
+        "beta_transus": 995,
+        "Ms": 575, "Mf": 400,
+        "alpha_KM": 0.015,
+        "notes": "alpha+beta -> beta above transus; martensitic alpha' on fast cooling"
+      },
+      "hardness_coefficients": {
+        "HV_alpha_beta": 340, "HV_martensite_alpha_prime": 420, "HV_beta": 300
+      }
+    },
+    "IN625": {
+      "name": "IN625 (Alloy 625 Nickel Superalloy)",
+      "category": "Nickel Superalloy",
+      "density": 8440.0,
+      "poisson_ratio": 0.308,
+      "solidus": 1290.0,
+      "liquidus": 1350.0,
+      "latent_heat": 290000.0,
+      "emissivity": 0.60,
+      "notes": "Inconel 625 (Ni-Cr-Mo-Nb) for high-temperature WAAM. Cp latent band [1290,1350] = 650 + 290000/60 = 5483.33 J/kgK. Scheil Nb segregation drives interdendritic Laves.",
+      "composition": {
+        "Ni": 60.92, "Cr": 21.5, "Mo": 8.5, "Nb": 3.65, "Fe": 4.5, "Ti": 0.2, "Al": 0.2, "C": 0.03, "Mn": 0.25, "Si": 0.25
+      },
+      "conductivity": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1289.99, 1290, 1350, 1350.01, 2000],
+        "k": [9.8, 12.5, 15.5, 18.5, 21.5, 24.5, 27.5, 29.0, 29.0, 30.0, 30.0, 30.0]
+      },
+      "specific_heat": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1289.99, 1290, 1350, 1350.01, 2000],
+        "Cp": [410, 440, 475, 510, 550, 590, 630, 650, 5483.33, 5483.33, 700, 700]
+      },
+      "youngs_modulus": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1290, 1350],
+        "E": [193e9, 185e9, 175e9, 165e9, 150e9, 135e9, 115e9, 40e9, 1e9]
+      },
+      "yield_strength": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1290, 1350],
+        "sigma_y": [450e6, 410e6, 360e6, 300e6, 230e6, 120e6, 40e6, 5e6, 1e6]
+      },
+      "thermal_expansion": {
+        "T": [25, 200, 400, 600, 800, 1000, 1200, 1290],
+        "alpha": [1.09e-5, 1.20e-5, 1.28e-5, 1.34e-5, 1.40e-5, 1.45e-5, 1.50e-5, 1.52e-5]
+      },
+      "phase_transformation": {
+        "Laves_eutectic_C": 1180,
+        "k_Nb": 0.48,
+        "notes": "Scheil non-equilibrium Nb partition -> terminal Laves eutectic at 1150-1180 C."
+      },
+      "hardness_coefficients": {
+        "HV_gamma_matrix": 230, "HV_aging_increment": 40, "HV_laves": 450
+      }
+    },
+    "AlSi10Mg": {
+      "name": "AlSi10Mg (EN AC-43000 Al-Si10-Mg)",
+      "category": "Aluminium Alloy",
+      "density": 2670.0,
+      "poisson_ratio": 0.33,
+      "solidus": 557.0,
+      "liquidus": 596.0,
+      "latent_heat": 390000.0,
+      "emissivity": 0.30,
+      "notes": "Hypoeutectic Al-Si10-Mg casting alloy for light-metal WAAM. Cp latent band [557,596] = 1050 + 390000/39 = 11050 J/kgK.",
+      "composition": {
+        "Al": 88.8, "Si": 10.0, "Mg": 0.35, "Fe": 0.25, "Mn": 0.2, "Cu": 0.05, "Zn": 0.05, "Ni": 0.15, "Ti": 0.15
+      },
+      "conductivity": {
+        "T": [25, 100, 200, 300, 400, 500, 556.99, 557, 596, 596.01, 900],
+        "k": [130.0, 140.0, 150.0, 155.0, 160.0, 165.0, 170.0, 170.0, 90.0, 90.0, 90.0]
+      },
+      "specific_heat": {
+        "T": [25, 100, 200, 300, 400, 500, 556.99, 557, 596, 596.01, 900],
+        "Cp": [750.0, 790.0, 840.0, 900.0, 960.0, 1020.0, 1050.0, 11050.0, 11050.0, 1000.0, 1000.0]
+      },
+      "youngs_modulus": {
+        "T": [25, 100, 200, 300, 400, 500, 557, 596],
+        "E": [70e9, 65e9, 58e9, 50e9, 40e9, 25e9, 10e9, 1e9]
+      },
+      "yield_strength": {
+        "T": [25, 100, 200, 300, 400, 500, 557, 596],
+        "sigma_y": [150e6, 140e6, 120e6, 95e6, 65e6, 35e6, 10e6, 1e6]
+      },
+      "thermal_expansion": {
+        "T": [25, 100, 200, 300, 400, 500, 557],
+        "alpha": [2.10e-5, 2.30e-5, 2.40e-5, 2.50e-5, 2.60e-5, 2.80e-5, 3.00e-5]
+      },
+      "phase_transformation": null,
+      "hardness_coefficients": {
+        "HV_as_built": 105, "HV_T6": 145, "HV_annealed": 75
+      }
+    },
+    "Pure Al (Al1xxx)": {
+      "name": "Pure Al (Al1xxx / Al1100)",
+      "category": "Aluminium (Pure / 1xxx series)",
+      "density": 2700.0,
+      "poisson_ratio": 0.33,
+      "solidus": 643.0,
+      "liquidus": 660.0,
+      "latent_heat": 397000.0,
+      "emissivity": 0.25,
+      "notes": "Commercially pure aluminium (>=99.0% Al, 1xxx series) for thermal & electrical busbars and high-ductility WAAM.",
+      "composition": {
+        "Al": 99.0, "Fe": 0.50, "Si": 0.35, "Cu": 0.10, "Mn": 0.05
+      },
+      "conductivity": {
+        "T": [25, 100, 200, 300, 400, 500, 600, 642.99, 643, 660, 660.01, 900],
+        "k": [222.0, 225.0, 227.0, 228.0, 225.0, 218.0, 210.0, 205.0, 205.0, 95.0, 95.0, 95.0]
+      },
+      "specific_heat": {
+        "T": [25, 100, 200, 300, 400, 500, 600, 642.99, 643, 660, 660.01, 900],
+        "Cp": [904.0, 940.0, 980.0, 1020.0, 1060.0, 1100.0, 1150.0, 1180.0, 24532.94, 24532.94, 1180.0, 1180.0]
+      },
+      "youngs_modulus": {
+        "T": [25, 100, 200, 300, 400, 500, 600, 643, 660],
+        "E": [69e9, 66e9, 60e9, 50e9, 35e9, 15e9, 3e9, 1e9, 0.2e9]
+      },
+      "yield_strength": {
+        "T": [25, 100, 200, 300, 400, 500, 600, 643],
+        "sigma_y": [95e6, 85e6, 65e6, 35e6, 15e6, 6e6, 2e6, 0.5e6]
+      },
+      "thermal_expansion": {
+        "T": [25, 100, 200, 300, 400, 500, 600, 643],
+        "alpha": [2.30e-5, 2.40e-5, 2.50e-5, 2.60e-5, 2.70e-5, 2.85e-5, 3.00e-5, 3.10e-5]
+      },
+      "phase_transformation": null,
+      "hardness_coefficients": {
+        "HV_annealed": 28, "HV_work_hardened": 45
+      }
+    }
+  }
+}

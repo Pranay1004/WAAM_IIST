@@ -1,0 +1,158 @@
+// ============================================================
+// MELT POOL FLUID DYNAMICS MODULE (Simplified 2D)
+//
+// Solves 2D coupled thermal-fluid in a transverse cross-section
+// of the melt pool (Y-Z plane at the torch position).
+//
+// Physics:
+//   - 2D Navier-Stokes with Boussinesq buoyancy
+//   - Marangoni (thermocapillary) surface stress
+//   - Surface tension gradient driven flow
+//
+// Limitations:
+//   - 2D cross-section (not full 3D)
+//   - Steady-state (quasi-static at each torch position)
+//   - Laminar flow (Re < 1000 typically)
+//
+// For full 3D VOF simulation, use OpenFOAM coupling
+// (see core/fluid/openfoam_coupling.py)
+// ============================================================
+
+cout << " === MELT POOL FLUID DYNAMICS (2D) ===" << endl;
+
+// 2D mesh: transverse cross-section at x = LxW/2
+// Domain: width TyDep x height 3*hBead (captures pool + substrate)
+// Top of window aligned exactly to deposit top: zTop = HzBase + HzDep.
+// (Was (Nlayers-2)*hBead + 3*hBead = HzBase+HzDep+hBead: 1-layer air overshoot.)
+real LyPool = TyDep * 2.;     // wider than deposit for substrate
+real LzPool = hBead * 3.;      // 3 layers deep
+real zPoolBase = HzBase + max(Nlayers-3, 0)*hBead;
+int NyPool = 40;
+int NzPool = 30;
+
+mesh ThPool = square(NyPool, NzPool,
+    [yDepLeft - TyDep/2. + LyPool*x,
+     zPoolBase + LzPool*y]);
+
+fespace VhPool(ThPool, [P2, P2]);  // velocity
+fespace PhPool(ThPool, P1);         // pressure
+fespace ShPool(ThPool, P1);         // temperature
+
+VhPool [vy, vz];      // velocity
+VhPool [wy, wz];      // test functions
+PhPool p2d;            // pressure
+PhPool q2d;            // test
+ShPool T2d, T2d0, dT2d;
+
+// Material properties (liquid state)
+real rhoL  = rhoS;
+real muL2d = 6.e-3;          // dynamic viscosity [Pa·s]
+real betaT = 1.2e-4;         // thermal expansion coefficient [1/K]
+real grav  = 9.81;           // gravity [m/s²]
+
+// Marangoni coefficient: dγ/dT [N/m/K]
+// Negative for most metals (flow from hot centre to cold edge)
+real dgdT = -4.3e-4;         // typical for steel
+
+// Surface tension reference
+real gamma0 = 1.8;           // surface tension at Tliq [N/m]
+
+// Solve coupled thermal-fluid in melt pool
+// Initial temperature: Tliq at centre, Tamb at edges
+T2d = Tamb + (Tliq - Tamb) * exp(-3.*((y-yDepCentre)^2/(TyDep/2.)^2
+      + (z - (HzBase + (Nlayers-0.5)*hBead))^2/(hBead)^2));
+T2d0 = T2d;
+
+// Identify liquid region (T > Tsol) via per-node loop.
+// NOTE: FreeFEM FE ternary (T2d>Tsol)?1:0 is not valid per-node; use explicit loop.
+ShPool liquidFrac;
+for(int iv=0; iv<ThPool.nv; iv++)
+    liquidFrac[][iv] = (T2d[][iv] > Tsol) ? 1.0 : 0.0;
+
+// Stokes-like solve with buoyancy and Marangoni
+// (iterative coupling: solve fluid -> update temperature -> repeat)
+
+int nPoolIter = 5;
+real dtPool = 0.01;
+
+for(int iter=0; iter<nPoolIter; iter++){
+    // Update liquid fraction (per-node loop, not FE ternary)
+    for(int iv=0; iv<ThPool.nv; iv++)
+        liquidFrac[][iv] = (T2d[][iv] > Tsol) ? 1.0 : 0.0;
+
+    // Fluid solve: Stokes with buoyancy (penalized in solid region)
+    // Darcy penalty for mushy/solid zone: add C*(1-fL)²/(fL³+eps) * v
+    real Cdarcy = 1.e6;  // Darcy penalty constant
+    real epsD   = 1.e-3;
+
+    solve MeltPoolFlow([vy,vz,p2d], [wy,wz,q2d]) =
+        int2d(ThPool)(
+            muL2d*(dy(vy)*dy(wy) + dz(vy)*dz(wy)
+                 + dy(vz)*dy(wz) + dz(vz)*dz(wz))
+          - p2d*(dy(wy) + dz(wz))
+          - q2d*(dy(vy) + dz(vz))
+          // Darcy penalty in solid/mushy zone
+          + Cdarcy*(1.-liquidFrac)^2/(liquidFrac^3 + epsD)
+            * (vy*wy + vz*wz)
+        )
+        // Buoyancy: rho*g*beta*(T-Tref) in z-direction
+        - int2d(ThPool)(
+            rhoL*grav*betaT*(T2d - Tsol)*liquidFrac * wz
+        )
+        // Marangoni BC on TOP surface (free surface).
+        // FreeFEM square() labels: 1=bottom, 2=right, 3=top, 4=left.
+        // (Was int1d(ThPool,4): left wall — wrong boundary, killed surface flow.)
+        // tau = dgamma/dT * dT/dy applied as natural BC, gated by liquidFrac.
+        + int1d(ThPool, 3)(
+            dgdT * dy(T2d) * wy * liquidFrac
+        )
+        + on(1, vy=0., vz=0.)   // bottom: no-slip (label 1)
+        + on(2, vy=0.)           // right wall: symmetry-like (label 2)
+        + on(4, vy=0.)           // left wall: no-slip (label 4)
+        // NOTE: label 3 (top) left free for Marangoni stress.
+        ;
+
+    // Thermal solve in pool with advection.
+    // NOTE: kMat/CpMat dispatcher signature is (T, zv); pass HzBase as
+    // representative elevation (was single-arg call -> runtime error).
+    real kPool = kMat(Tsol, HzBase);
+    real CpPool = CpMat(Tsol, HzBase);
+    solve MeltPoolTherm(T2d, dT2d) =
+        int2d(ThPool)(
+            rhoL*CpPool/dtPool * T2d * dT2d
+          + kPool*(dy(T2d)*dy(dT2d) + dz(T2d)*dz(dT2d))
+          + rhoL*CpPool*(vy*dy(T2d) + vz*dz(T2d))*dT2d
+        )
+        - int2d(ThPool)(
+            rhoL*CpPool/dtPool * T2d0 * dT2d
+        )
+        ;
+
+    T2d = max(T2d, Tamb);
+    T2d0 = T2d;
+
+    // Compute max velocity
+    ShPool vmag;
+    vmag = sqrt(vy^2 + vz^2);
+    cout << "  Pool iter " << iter << ":  vmax = " << vmag[].max*1000.
+         << " mm/s  Tmax = " << T2d[].max << " C" << endl;
+}
+
+// Pool dimensions (per-node loop: FE ternary invalid on FE functions)
+ShPool poolIndicator;
+for(int iv=0; iv<ThPool.nv; iv++)
+    poolIndicator[][iv] = (T2d[][iv] > Tsol) ? 1.0 : 0.0;
+real poolArea = int2d(ThPool)(poolIndicator);
+cout << "  Melt pool cross-section area: " << poolArea*1.e6 << " mm²" << endl;
+
+// Save 2D pool results
+{
+    ShPool vmag2d;
+    vmag2d = sqrt(vy^2 + vz^2);
+    int[int] ord=[1,1,1,1,1];
+    savevtk(outdir+"meltpool_2d.vtu", ThPool,
+        T2d, vy, vz, vmag2d, liquidFrac,
+        dataname="TempC Vy Vz Vmag LiquidFraction",
+        order=ord);
+}
+cout << "  Melt pool saved: " << outdir << "meltpool_2d.vtu" << endl;

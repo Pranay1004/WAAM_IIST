@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    name: Compile + physics suite
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: WAAM-Framework
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install numpy
+
+      - name: Syntax-check all Python sources
+        run: python -m compileall -q codegen core gui mesh postprocess tests run.py
+
+      - name: Run physics validation suite
+        run: python run.py --validate
+
+  ruff:
+    name: Ruff fatal errors
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: WAAM-Framework
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint (syntax/undefined-name class errors only)
+        run: ruff check .

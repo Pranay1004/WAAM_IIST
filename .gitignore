@@ -1,0 +1,19 @@
+# WAAM_IIST monorepo — only the two project dirs are tracked.
+/*
+!WAAM-Framework/
+!waam_lab/
+!.github/
+!.gitignore
+!README.md
+!LICENSE
+
+# Junk anywhere inside tracked dirs
+.DS_Store
+__pycache__/
+*.pyc
+.vscode/
+*.egg-info/
+
+# Privacy & copyrighted material (excluded by maintainer decision)
+waam_lab/docs/WhatsApp Chat - WAAM/
+waam_lab/docs/s12206-026-0341-7.pdf

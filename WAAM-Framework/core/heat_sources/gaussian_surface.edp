@@ -1,0 +1,23 @@
+// ============================================================
+// HEAT SOURCE: 2D GAUSSIAN SURFACE
+// Surface heat flux applied as a Neumann BC on the top surface
+// For thin-layer processes: LPBF, surface remelting
+//
+// Parameters: Rspot (spot radius), Pweld, eta
+// q_s(r) = Q0s * exp(-3*r^2/R^2) [W/m^2]
+// Applied via: int2d(Th, topLabel)( q_s * dTemp )
+// ============================================================
+
+real Rspot  = {{ Rspot }};
+real Q0surf = 3.*{{ Pweld }}/({{ pi }}*Rspot*Rspot);
+
+// Surface source is applied in the RHS boundary integral
+// xTorch, yTorch must be set before this block is called
+// This source is NOT multiplied into Tsource (volumetric).
+// Instead, it is added as a boundary term in lThermal.
+//
+// Usage in variational form:
+//   + int2d(Th, {{ top_label }})(
+//       Q0surf * exp(-3.*((x-xTorch)^2 + (y-yTorch)^2)/(Rspot^2))
+//       * psiActive * dTemp
+//   )
