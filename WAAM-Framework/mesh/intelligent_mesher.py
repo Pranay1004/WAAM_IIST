@@ -344,3 +344,47 @@ def import_and_mesh_cad_intelligent(cad_path: str, output_mesh_path: str = None,
 
     else:
         raise ValueError(f"Unsupported CAD format: {suffix}")
+
+
+def detect_mesh_substrate_height(mesh_path: str) -> Optional[float]:
+    """Detect substrate plate thickness [mm] from a Medit .mesh file.
+
+    In a fused substrate-part mesh, the substrate plate spans [0, Lx] x [0, Ly] x [0, Hz],
+    while deposited features sit away from the boundary corners. Thus the maximum Z
+    coordinate near the outer plan corners corresponds to the substrate plate top face.
+    """
+    if not mesh_path or not os.path.exists(mesh_path):
+        return None
+    try:
+        import numpy as np
+        verts = []
+        with open(mesh_path, 'r', errors='ignore') as f:
+            for line in f:
+                line = line.strip()
+                if line == 'Vertices':
+                    n_v = int(next(f).strip())
+                    for _ in range(n_v):
+                        parts = next(f).split()
+                        if len(parts) >= 3:
+                            verts.append([float(parts[0]), float(parts[1]), float(parts[2])])
+                    break
+        if not verts:
+            return None
+        pts = np.array(verts, dtype=np.float64)
+        spans = pts.max(axis=0) - pts.min(axis=0)
+        scale = 1000.0 if spans.max() < 1.0 else 1.0
+        pts_mm = pts * scale
+        xmin, ymin = pts_mm[:, 0].min(), pts_mm[:, 1].min()
+        xmax, ymax = pts_mm[:, 0].max(), pts_mm[:, 1].max()
+        tol = 1.0  # 1 mm boundary tolerance
+        corners = (
+            ((pts_mm[:, 0] <= xmin + tol) | (pts_mm[:, 0] >= xmax - tol)) &
+            ((pts_mm[:, 1] <= ymin + tol) | (pts_mm[:, 1] >= ymax - tol))
+        )
+        if not np.any(corners):
+            return None
+        corner_zs = pts_mm[corners, 2]
+        sub_hz = float(np.max(corner_zs))
+        return round(sub_hz, 3)
+    except Exception:
+        return None

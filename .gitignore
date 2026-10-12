@@ -90,3 +90,7 @@ openfoam/waamCase_multi/[1-9]*
 # Privacy & copyrighted material
 waam_lab/docs/WhatsApp Chat - WAAM/
 waam_lab/docs/s12206-026-0341-7.pdf
+
+# Literature survey papers and datasets
+Literaure_Survey/
+Literature_Survey/

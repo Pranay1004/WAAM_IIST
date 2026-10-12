@@ -600,6 +600,20 @@ class AdvancedWAAMSlicer:
             for i, pt in enumerate(layer_pass_times):
                 f.write(f"{i+1} {pt:.6f}\n")
 
+        # Canonical solver artifacts (layer_pass_times.txt and toolpath.txt)
+        parent_dir = Path(output_path).parent
+        canon_lt = parent_dir / "layer_pass_times.txt"
+        with open(canon_lt, 'w') as f:
+            f.write(f"{len(layer_pass_times)}\n")
+            for i, pt in enumerate(layer_pass_times):
+                f.write(f"{i+1} {pt:.6f}\n")
+
+        canon_tp = parent_dir / "toolpath.txt"
+        if canon_tp.resolve() != Path(txt_path).resolve():
+            with open(canon_tp, 'w') as f:
+                f.write(f"{len(txt_lines)}\n")
+                f.write("\n".join(txt_lines) + "\n")
+
         # Compute physics metrics
         weld_dist_m = total_weld_dist_mm / 1000.0
         bead_volume_m3 = (total_weld_dist_mm / 1000.0) * (self.w / 1000.0) * (self.h / 1000.0)
