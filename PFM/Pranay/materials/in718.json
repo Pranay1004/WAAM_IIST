@@ -1,0 +1,31 @@
+{
+  "alloy_name": "Inconel 718 (IN718)",
+  "composition": "Ni-19Cr-18Fe-5.2Nb-3.0Mo (wt%)",
+  "base_metal": "Ni",
+  "solidification_mode": "Dendritic with interdendritic Laves eutectic",
+  "thermodynamics": {
+    "T_liquidus_K": 1609.0,
+    "T_solidus_K": 1533.0,
+    "delta_T0_K": 76.0,
+    "T_interpass_K": 473.0,
+    "latent_heat_J_kg": 290000.0,
+    "specific_heat_J_kg_K": 590.0,
+    "density_liquid_kg_m3": 7800.0,
+    "thermal_diffusivity_m2_s": 3.8e-6,
+    "interfacial_energy_J_m2": 0.32,
+    "molar_volume_m3_mol": 7.1e-6
+  },
+  "calphad_partitioning": {
+    "k_Nb": 0.48,
+    "k_Mo": 0.82,
+    "k_Cr": 1.08,
+    "liquidus_slope_Nb_K_wt": -11.5,
+    "hessian_liquid_J_mol": 52000.0
+  },
+  "acoustics": {
+    "sound_speed_liquid_m_s": 4200.0,
+    "blake_threshold_mpa": 0.72,
+    "attenuation_coeff_Np_m": 0.14,
+    "viscosity_liquid_Pa_s": 0.0062
+  }
+}

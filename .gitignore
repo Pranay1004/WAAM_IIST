@@ -1,19 +1,92 @@
-# WAAM_IIST monorepo — only the two project dirs are tracked.
-/*
-!WAAM-Framework/
-!waam_lab/
-!.github/
-!.gitignore
-!README.md
-!LICENSE
+# WAAM_IIST Monorepo .gitignore
+# ----------------------------------------------------
 
-# Junk anywhere inside tracked dirs
+# OS & Environment junk
 .DS_Store
-__pycache__/
-*.pyc
-.vscode/
-*.egg-info/
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.stfolder/
+.stversions/
 
-# Privacy & copyrighted material (excluded by maintainer decision)
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+
+# IDE / Editor configuration
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Office temporary lock files
+~$*.xlsx
+~$*.docx
+~$*.pptx
+
+# Large videos and media (>50MB-200MB, rejected by GitHub 100MB limit)
+*.avi
+*.mov
+*.mkv
+PFM/Final_Project/Final Project_SC19B032.pptx
+
+# Solver logs (>100MB run dumps)
+*.log
+*.log.*
+solver_parallel.log
+log.beamWeldFoam
+
+# Numerical simulation output dumps (regenerated upon execution)
+waam_output/
+WAAM-Framework/waam_output/
+WAAM-Framework/case1/vtk/
+WAAM-Framework/case1/fields_*.txt
+WAAM-Framework/case1/activation.*.png
+
+# Symlinks & circular references
+PFM/Pranay/uva_pranay_ignore
+
+# Standalone cloned repositories
+openfoam/beamweldfoam/
+
+# OpenFOAM transient outputs & build artifacts
+openfoam/**/VTK/
+openfoam/**/postProcessing/
+openfoam/**/processor*/
+openfoam/**/Make/*/
+openfoam/**/*.o
+openfoam/**/*.dep
+openfoam/waamCase/[0-9]*.[0-9]*
+openfoam/waamCase/[1-9]*
+openfoam/waamCase_multi/[0-9]*.[0-9]*
+openfoam/waamCase_multi/[1-9]*
+
+# Preserved OpenFOAM initial conditions
+!openfoam/**/0/
+!openfoam/**/0.orig/
+
+# Privacy & copyrighted material
 waam_lab/docs/WhatsApp Chat - WAAM/
 waam_lab/docs/s12206-026-0341-7.pdf

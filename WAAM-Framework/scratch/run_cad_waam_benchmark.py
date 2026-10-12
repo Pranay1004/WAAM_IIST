@@ -60,10 +60,10 @@ def run_benchmark(stl_filename: str, output_dirname: str):
         "mesh_file": mesh_path,
         "stl_file": stl_path,
         "output_dir": fem_dir.rstrip("/") + "/",
-        # Base plate fixed to standard 150 x 150 x 15 mm in SI meters
+        # Base plate in SI meters
         "lx": 0.150,
         "ly_base": 0.150,
-        "hz_base": 0.015,
+        "hz_base": 0.005,
         "nx_base": 25,
         "ny_base": 8,
         "nz_base": 2,

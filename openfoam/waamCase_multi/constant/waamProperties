@@ -1,0 +1,58 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2412                                 |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "constant";
+    object      waamProperties;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Thermal & Phase Change Properties (ER70S6 Steel)
+T_sol           1698.0;     // Solidus temperature [K]
+T_liq           1778.0;     // Liquidus temperature [K]
+L_fusion        2.7e5;      // Latent heat of fusion [J/kg]
+Cp_metal        750.0;      // Specific heat capacity of metal [J/(kg K)]
+Cp_gas          1000.0;     // Specific heat capacity of shielding gas [J/(kg K)]
+k_metal         25.0;       // Thermal conductivity of metal [W/(m K)]
+k_gas           0.05;       // Thermal conductivity of shielding gas [W/(m K)]
+beta_T          1.6e-5;     // Thermal expansion coefficient [1/K]
+T_ref           300.0;      // Ambient reference temperature [K]
+
+// Hydrodynamic & Porosity properties
+C_mush          1.0e7;      // Darcy drag coefficient for mushy zone [kg/(m^3 s)]
+
+// Marangoni Surface Tension (Fe-S Pseudo-binary System)
+gamma_m0        1.943;      // Surface tension of pure Fe at Tm [N/m]
+A_gamma         0.00043;    // Temperature coefficient [N/(m K)]
+R_gas           8.314;      // Universal gas constant [J/(mol K)]
+Gamma_s         1.3e-5;     // Surface excess at saturation [mol/m^2]
+k1_gamma        0.00318;    // Entropy factor [-]
+wt_S            0.018;      // Weight percent of Sulfur (ER70S6)
+delta_H0        -166000.0;  // Heat of adsorption [J/mol]
+T_m             1809.0;     // Melting point of pure Fe [K]
+
+// Arc Heat Source (Gaussian - Paper Calibration)
+UI_arc          2165.0;     // Average arc power UI [W]
+eta_arc         0.68;       // Total arc efficiency
+eta_d           0.25;       // Droplet heat ratio
+sigma_arc       0.0022;     // Effective radius of heat distribution [m]
+v_weld          (0.00283 0 0); // Welding travel velocity (0.17 m/min = 2.83 mm/s) [m/s]
+x0_torch        (0.005 0 0.008); // Initial torch position [m]
+
+// Discrete Droplet Generation (Paper Parameters)
+f_d             60.0;       // Droplet frequency [Hz]
+d_wire          0.0012;     // Wire diameter (1.2 mm) [m]
+v_wire          0.0783;     // Wire feed speed (4.7 m/min = 0.0783 m/s) [m/s]
+T_drop          1900.0;     // Droplet temperature [K]
+v_drop          (0 0 -0.7); // Initial droplet velocity [m/s]
+h_drop          0.0015;     // Generation height above current surface [m]
+
+// ************************************************************************* //

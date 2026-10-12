@@ -1,0 +1,20 @@
+# Julia
+Manifest.toml
+/docs/build/
+/docs/Manifest.toml
+*.cov
+*.jl.mem
+
+# Run output. Every run directory is self-describing (see `run_manifest`), but they
+# are large and reproducible, so they are not committed.
+waam_output/
+validation_output/
+/test/artifacts/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store

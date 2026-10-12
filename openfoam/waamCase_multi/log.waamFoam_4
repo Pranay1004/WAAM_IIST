@@ -1,0 +1,441 @@
+/*---------------------------------------------------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2412                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+Build  : _8dbc61e11c-20241220 OPENFOAM=2412 version=v2412
+Arch   : "LSB;label=32;scalar=64"
+Exec   : /Users/pandeyji/OpenFOAM/pandeyji-v2412/platforms/darwin64ClangDPInt32Opt/bin/waamFoam -parallel
+Date   : Oct 08 2026
+Time   : 12:45:20
+Host   : pranay
+PID    : 28975
+I/O    : uncollated
+Case   : /Users/pandeyji/Desktop/WAAM/waamCase_multi
+nProcs : 4
+Hosts  :
+(
+    (pranay 4)
+)
+Pstream initialized with:
+    floatTransfer      : false
+    maxCommsSize       : 0
+    nProcsSimpleSum    : 0
+    nonBlockingExchange: 0 (tuning: 0)
+    exchange algorithm : 0
+    commsType          : nonBlocking
+    polling iterations : 0
+trapFpe: Floating point exception trapping enabled (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 5, maxFileModificationPolls 20)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+Create mesh for time = 0
+
+
+PIMPLE: no residual control data found. Calculations will employ 2 corrector loops
+
+Reading field p_rgh
+
+Reading field U
+
+Reading/calculating face flux field phi
+
+Reading transportProperties
+
+Selecting incompressible transport model Newtonian
+Selecting incompressible transport model Newtonian
+Selecting turbulence model type laminar
+Selecting laminar stress model Stokes
+
+Reading g
+
+Reading hRef
+Calculating field g.h
+
+No MRF models present
+
+No finite volume options present
+Reading waamProperties
+
+Creating field T (Temperature)
+
+Creating field fl (Liquid fraction)
+
+Creating field fs (Solid fraction)
+
+Creating field Q_arc (Arc heat source)
+
+Creating field Sp_mush (Darcy mushy zone damping)
+
+Creating field VOF_source (Wire mass deposition rate)
+
+Creating field F_marangoni (Marangoni surface force)
+
+Creating field F_buoyancy (Thermal buoyancy force)
+
+Creating thermophysical property fields
+
+DICPCG:  Solving for pcorr, Initial residual = 0, Final residual = 0, No Iterations 0
+time step continuity errors : sum local = 0, global = 0, cumulative = 0
+Courant Number mean: 0 max: 0
+
+Starting time loop
+
+Courant Number mean: 0 max: 0
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.00011976
+Time = 0.00011976
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 1, Final residual = 1.3474e-17, No Iterations 1
+Phase-1 volume fraction = 1.76757e-06  Min(alpha.metal) = 0  Max(alpha.metal) = 0.000503815
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 1.76757e-06  Min(alpha.metal) = 0  Max(alpha.metal) = 0.000503815
+smoothSolver:  Solving for Ux, Initial residual = 1, Final residual = 2.50725e-08, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 1, Final residual = 5.98261e-09, No Iterations 3
+smoothSolver:  Solving for Uz, Initial residual = 1, Final residual = 4.42171e-08, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 1, Final residual = 0.0486985, No Iterations 31
+time step continuity errors : sum local = 3.44714e-06, global = 1.45101e-06, cumulative = 1.45101e-06
+DICPCG:  Solving for p_rgh, Initial residual = 0.0136603, Final residual = 9.03855e-08, No Iterations 102
+time step continuity errors : sum local = 1.76759e-06, global = 1.76757e-06, cumulative = 3.21858e-06
+DILUPBiCGStab:  Solving for T, Initial residual = 1, Final residual = 2.1169e-09, No Iterations 2
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.000212857, Final residual = 2.49588e-14, No Iterations 2
+Phase-1 volume fraction = 1.76757e-06  Min(alpha.metal) = 0  Max(alpha.metal) = 0.000503211
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 1.76757e-06  Min(alpha.metal) = -2.30188e-35  Max(alpha.metal) = 0.000503211
+smoothSolver:  Solving for Ux, Initial residual = 0.00651903, Final residual = 4.20724e-08, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 0.00482043, Final residual = 1.53218e-08, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.00807332, Final residual = 6.17708e-08, No Iterations 2
+DICPCG:  Solving for p_rgh, Initial residual = 0.00148658, Final residual = 6.83577e-05, No Iterations 39
+time step continuity errors : sum local = 1.7794e-06, global = 1.76799e-06, cumulative = 4.98657e-06
+DICPCG:  Solving for p_rgh, Initial residual = 8.02946e-05, Final residual = 9.83083e-08, No Iterations 70
+time step continuity errors : sum local = 1.76759e-06, global = 1.76757e-06, cumulative = 6.75413e-06
+DILUPBiCGStab:  Solving for T, Initial residual = 0.000237178, Final residual = 7.11676e-09, No Iterations 1
+ExecutionTime = 0.39 s  ClockTime = 0 s
+
+Courant Number mean: 8.04289e-05 max: 0.00314508
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.00014406
+Time = 0.00026382
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.276805, Final residual = 3.12335e-11, No Iterations 2
+Phase-1 volume fraction = 3.89378e-06  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00110791
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 3.89378e-06  Min(alpha.metal) = -1.50713e-34  Max(alpha.metal) = 0.00110791
+smoothSolver:  Solving for Ux, Initial residual = 0.582071, Final residual = 3.00256e-08, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.57322, Final residual = 9.18652e-07, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.665618, Final residual = 4.39437e-08, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.161334, Final residual = 0.0078506, No Iterations 29
+time step continuity errors : sum local = 4.35082e-06, global = 2.64264e-06, cumulative = 9.39677e-06
+DICPCG:  Solving for p_rgh, Initial residual = 0.0158057, Final residual = 9.66066e-08, No Iterations 96
+time step continuity errors : sum local = 2.12623e-06, global = 2.12621e-06, cumulative = 1.1523e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.247318, Final residual = 6.94737e-10, No Iterations 2
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.000497627, Final residual = 1.1737e-12, No Iterations 2
+Phase-1 volume fraction = 3.89378e-06  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00110696
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 3.89378e-06  Min(alpha.metal) = -6.73081e-33  Max(alpha.metal) = 0.00110696
+smoothSolver:  Solving for Ux, Initial residual = 0.00607666, Final residual = 4.8407e-08, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 0.0036917, Final residual = 1.06891e-08, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.00768714, Final residual = 7.36246e-08, No Iterations 2
+DICPCG:  Solving for p_rgh, Initial residual = 0.00438717, Final residual = 0.000196077, No Iterations 36
+time step continuity errors : sum local = 2.15448e-06, global = 2.12222e-06, cumulative = 1.36452e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.000225854, Final residual = 9.22639e-08, No Iterations 75
+time step continuity errors : sum local = 2.12622e-06, global = 2.12621e-06, cumulative = 1.57714e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.000210429, Final residual = 4.20729e-09, No Iterations 1
+ExecutionTime = 0.72 s  ClockTime = 1 s
+
+Courant Number mean: 0.000154093 max: 0.00785499
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.000173124
+Time = 0.000436945
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.172608, Final residual = 3.8711e-10, No Iterations 2
+Phase-1 volume fraction = 6.44895e-06  Min(alpha.metal) = 0  Max(alpha.metal) = 0.0018311
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 6.44895e-06  Min(alpha.metal) = -3.2899e-32  Max(alpha.metal) = 0.0018311
+smoothSolver:  Solving for Ux, Initial residual = 0.419432, Final residual = 2.0903e-08, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.412409, Final residual = 7.55333e-07, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.528315, Final residual = 4.12125e-08, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.25147, Final residual = 0.0113178, No Iterations 11
+time step continuity errors : sum local = 5.2069e-06, global = 2.06901e-06, cumulative = 1.78404e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.0126134, Final residual = 9.19345e-08, No Iterations 97
+time step continuity errors : sum local = 2.55521e-06, global = 2.55518e-06, cumulative = 2.03956e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.14178, Final residual = 5.29661e-10, No Iterations 2
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.00108459, Final residual = 2.14176e-11, No Iterations 2
+Phase-1 volume fraction = 6.44895e-06  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00182914
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 6.44895e-06  Min(alpha.metal) = -1.99418e-29  Max(alpha.metal) = 0.00182914
+smoothSolver:  Solving for Ux, Initial residual = 0.0049868, Final residual = 3.9507e-08, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 0.0045915, Final residual = 1.7425e-08, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.00573158, Final residual = 5.2993e-08, No Iterations 2
+DICPCG:  Solving for p_rgh, Initial residual = 0.00478206, Final residual = 0.000222889, No Iterations 9
+time step continuity errors : sum local = 2.62289e-06, global = 2.56762e-06, cumulative = 2.29632e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.000277895, Final residual = 8.74865e-08, No Iterations 80
+time step continuity errors : sum local = 2.55521e-06, global = 2.55518e-06, cumulative = 2.55184e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.000196737, Final residual = 5.09187e-09, No Iterations 1
+ExecutionTime = 1.04 s  ClockTime = 1 s
+
+Courant Number mean: 0.00030773 max: 0.0154686
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.000208118
+Time = 0.000645062
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.131452, Final residual = 2.75039e-09, No Iterations 2
+Phase-1 volume fraction = 9.5206e-06  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00269448
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 9.5206e-06  Min(alpha.metal) = -4.39828e-28  Max(alpha.metal) = 0.00269448
+smoothSolver:  Solving for Ux, Initial residual = 0.333477, Final residual = 2.62488e-08, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.324641, Final residual = 8.58326e-07, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.43403, Final residual = 5.52675e-08, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.181595, Final residual = 0.00871479, No Iterations 10
+time step continuity errors : sum local = 7.18178e-06, global = 2.41894e-06, cumulative = 2.79373e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.0108717, Final residual = 9.80689e-08, No Iterations 95
+time step continuity errors : sum local = 3.07171e-06, global = 3.07165e-06, cumulative = 3.1009e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.100026, Final residual = 5.4736e-10, No Iterations 2
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.00211035, Final residual = 2.42402e-10, No Iterations 2
+Phase-1 volume fraction = 9.5206e-06  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00269074
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 9.5206e-06  Min(alpha.metal) = -1.74003e-26  Max(alpha.metal) = 0.00269074
+smoothSolver:  Solving for Ux, Initial residual = 0.00620688, Final residual = 5.74313e-08, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 0.00586557, Final residual = 2.69823e-08, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.00758113, Final residual = 8.76446e-08, No Iterations 2
+DICPCG:  Solving for p_rgh, Initial residual = 0.00586569, Final residual = 0.000239193, No Iterations 9
+time step continuity errors : sum local = 3.20522e-06, global = 3.09513e-06, cumulative = 3.41041e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.000320318, Final residual = 8.12803e-08, No Iterations 81
+time step continuity errors : sum local = 3.0717e-06, global = 3.07165e-06, cumulative = 3.71758e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.000241868, Final residual = 7.82484e-09, No Iterations 1
+ExecutionTime = 1.36 s  ClockTime = 1 s
+
+Courant Number mean: 0.000607427 max: 0.0273745
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.00024814
+Time = 0.000893202
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.108877, Final residual = 7.25012e-12, No Iterations 3
+Phase-1 volume fraction = 1.3183e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00371319
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 1.3183e-05  Min(alpha.metal) = -1.71255e-25  Max(alpha.metal) = 0.00371319
+smoothSolver:  Solving for Ux, Initial residual = 0.276824, Final residual = 3.4912e-08, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.269905, Final residual = 8.82463e-09, No Iterations 3
+smoothSolver:  Solving for Uz, Initial residual = 0.361257, Final residual = 7.71426e-08, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.146367, Final residual = 0.00630616, No Iterations 10
+time step continuity errors : sum local = 9.14273e-06, global = 2.79581e-06, cumulative = 3.99716e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.00940756, Final residual = 9.49853e-08, No Iterations 94
+time step continuity errors : sum local = 3.66245e-06, global = 3.66235e-06, cumulative = 4.36339e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.0772818, Final residual = 5.73367e-10, No Iterations 2
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.00375072, Final residual = 2.03228e-09, No Iterations 2
+Phase-1 volume fraction = 1.3183e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00370674
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 1.3183e-05  Min(alpha.metal) = -2.54245e-25  Max(alpha.metal) = 0.00370674
+smoothSolver:  Solving for Ux, Initial residual = 0.00780056, Final residual = 8.97638e-08, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 0.00732765, Final residual = 4.51728e-08, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.00994831, Final residual = 1.4892e-07, No Iterations 2
+DICPCG:  Solving for p_rgh, Initial residual = 0.00699654, Final residual = 0.000325416, No Iterations 8
+time step continuity errors : sum local = 3.97594e-06, global = 3.70876e-06, cumulative = 4.73427e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.000441657, Final residual = 9.879e-08, No Iterations 82
+time step continuity errors : sum local = 3.66246e-06, global = 3.66235e-06, cumulative = 5.1005e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.000301376, Final residual = 2.38829e-10, No Iterations 2
+ExecutionTime = 1.68 s  ClockTime = 2 s
+
+Courant Number mean: 0.0011137 max: 0.0452053
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.000298544
+Time = 0.00119175
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.0959261, Final residual = 7.38572e-11, No Iterations 3
+Phase-1 volume fraction = 1.75892e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00492195
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 1.75892e-05  Min(alpha.metal) = -7.37482e-24  Max(alpha.metal) = 0.00492195
+smoothSolver:  Solving for Ux, Initial residual = 0.244669, Final residual = 5.26953e-08, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.237733, Final residual = 1.50354e-08, No Iterations 3
+smoothSolver:  Solving for Uz, Initial residual = 0.318311, Final residual = 1.20638e-07, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.125804, Final residual = 0.00566814, No Iterations 9
+time step continuity errors : sum local = 1.32291e-05, global = 3.48305e-06, cumulative = 5.44881e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.00948695, Final residual = 9.57444e-08, No Iterations 94
+time step continuity errors : sum local = 4.40644e-06, global = 4.40627e-06, cumulative = 5.88944e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.0636764, Final residual = 1.20703e-09, No Iterations 2
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.00636756, Final residual = 2.46968e-11, No Iterations 3
+Phase-1 volume fraction = 1.75892e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00491172
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 1.75892e-05  Min(alpha.metal) = -4.01897e-23  Max(alpha.metal) = 0.00491172
+smoothSolver:  Solving for Ux, Initial residual = 0.00980101, Final residual = 1.66785e-07, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 0.00942516, Final residual = 8.63424e-08, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.013344, Final residual = 2.89389e-07, No Iterations 2
+DICPCG:  Solving for p_rgh, Initial residual = 0.00828541, Final residual = 0.000338135, No Iterations 9
+time step continuity errors : sum local = 4.99379e-06, global = 4.48287e-06, cumulative = 6.33772e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.000556948, Final residual = 8.91692e-08, No Iterations 83
+time step continuity errors : sum local = 4.40643e-06, global = 4.40627e-06, cumulative = 6.77835e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.00114249, Final residual = 9.30499e-10, No Iterations 2
+ExecutionTime = 2.02 s  ClockTime = 2 s
+
+Courant Number mean: 0.00194918 max: 0.0728422
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.000354873
+Time = 0.00154662
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.0863086, Final residual = 6.10758e-10, No Iterations 3
+Phase-1 volume fraction = 2.28268e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00633695
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 2.28268e-05  Min(alpha.metal) = -2.10764e-22  Max(alpha.metal) = 0.00633695
+smoothSolver:  Solving for Ux, Initial residual = 0.217318, Final residual = 8.06478e-08, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.212811, Final residual = 2.6105e-08, No Iterations 3
+smoothSolver:  Solving for Uz, Initial residual = 0.282555, Final residual = 1.92061e-07, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.111201, Final residual = 0.00555691, No Iterations 8
+time step continuity errors : sum local = 1.99199e-05, global = 4.28982e-06, cumulative = 7.20733e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.0100185, Final residual = 9.09379e-08, No Iterations 94
+time step continuity errors : sum local = 5.23791e-06, global = 5.23764e-06, cumulative = 7.7311e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.0539107, Final residual = 2.92124e-09, No Iterations 2
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.0103077, Final residual = 3.38357e-10, No Iterations 3
+Phase-1 volume fraction = 2.28268e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00632643
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 2.28268e-05  Min(alpha.metal) = -1.80434e-21  Max(alpha.metal) = 0.00632643
+smoothSolver:  Solving for Ux, Initial residual = 0.0114065, Final residual = 2.91549e-07, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 0.0109315, Final residual = 1.72512e-07, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.0172292, Final residual = 5.32648e-07, No Iterations 2
+DICPCG:  Solving for p_rgh, Initial residual = 0.0110759, Final residual = 0.000520373, No Iterations 8
+time step continuity errors : sum local = 6.7844e-06, global = 5.45704e-06, cumulative = 8.2768e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.000824208, Final residual = 8.7559e-08, No Iterations 85
+time step continuity errors : sum local = 5.2379e-06, global = 5.23764e-06, cumulative = 8.80056e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.0104989, Final residual = 4.13532e-09, No Iterations 2
+ExecutionTime = 2.36 s  ClockTime = 2 s
+
+Courant Number mean: 0.00321185 max: 0.113242
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.000429148
+Time = 0.00197577
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.0808203, Final residual = 4.83636e-09, No Iterations 3
+Phase-1 volume fraction = 2.91607e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.00802759
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 2.91607e-05  Min(alpha.metal) = -7.86701e-21  Max(alpha.metal) = 0.00802759
+smoothSolver:  Solving for Ux, Initial residual = 0.204129, Final residual = 1.4977e-07, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.200617, Final residual = 6.21033e-08, No Iterations 3
+smoothSolver:  Solving for Uz, Initial residual = 0.259089, Final residual = 3.57651e-07, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.106482, Final residual = 0.00477168, No Iterations 8
+time step continuity errors : sum local = 2.81845e-05, global = 5.00403e-06, cumulative = 9.30097e-05
+DICPCG:  Solving for p_rgh, Initial residual = 0.0104544, Final residual = 9.82371e-08, No Iterations 88
+time step continuity errors : sum local = 6.33439e-06, global = 6.33388e-06, cumulative = 9.93435e-05
+DILUPBiCGStab:  Solving for T, Initial residual = 0.0483648, Final residual = 1.65206e-09, No Iterations 3
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.0160379, Final residual = 3.79248e-09, No Iterations 3
+Phase-1 volume fraction = 2.91606e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.0080239
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 2.91606e-05  Min(alpha.metal) = -3.6063e-22  Max(alpha.metal) = 0.0080239
+smoothSolver:  Solving for Ux, Initial residual = 0.0152452, Final residual = 7.28154e-07, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 0.014581, Final residual = 4.81513e-07, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.0224832, Final residual = 2.47597e-08, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.0145008, Final residual = 0.000707279, No Iterations 6
+time step continuity errors : sum local = 1.00521e-05, global = 6.78591e-06, cumulative = 0.000106129
+DICPCG:  Solving for p_rgh, Initial residual = 0.00127035, Final residual = 9.00627e-08, No Iterations 88
+time step continuity errors : sum local = 6.33435e-06, global = 6.3339e-06, cumulative = 0.000112463
+DILUPBiCGStab:  Solving for T, Initial residual = 0.0220994, Final residual = 1.49173e-09, No Iterations 3
+ExecutionTime = 2.69 s  ClockTime = 3 s
+
+Courant Number mean: 0.00520014 max: 0.172901
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.000514978
+Time = 0.00249075
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.0761595, Final residual = 1.75516e-10, No Iterations 4
+Phase-1 volume fraction = 3.67612e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.0100439
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 3.67612e-05  Min(alpha.metal) = -5.8944e-23  Max(alpha.metal) = 0.0100439
+smoothSolver:  Solving for Ux, Initial residual = 0.19234, Final residual = 3.41865e-07, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.190182, Final residual = 1.82772e-07, No Iterations 3
+smoothSolver:  Solving for Uz, Initial residual = 0.234769, Final residual = 7.04456e-07, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.104406, Final residual = 0.0042644, No Iterations 8
+time step continuity errors : sum local = 4.02218e-05, global = 5.55968e-06, cumulative = 0.000118023
+DICPCG:  Solving for p_rgh, Initial residual = 0.0114491, Final residual = 9.05986e-08, No Iterations 92
+time step continuity errors : sum local = 7.60142e-06, global = 7.60063e-06, cumulative = 0.000125624
+DILUPBiCGStab:  Solving for T, Initial residual = 0.0447336, Final residual = 2.15502e-09, No Iterations 5
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.0245168, Final residual = 1.8168e-10, No Iterations 4
+Phase-1 volume fraction = 3.67611e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.0100411
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 3.67612e-05  Min(alpha.metal) = -2.38098e-24  Max(alpha.metal) = 0.0100411
+smoothSolver:  Solving for Ux, Initial residual = 0.0165793, Final residual = 3.60414e-08, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.017599, Final residual = 2.40825e-08, No Iterations 3
+smoothSolver:  Solving for Uz, Initial residual = 0.0287252, Final residual = 8.36851e-08, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.0198396, Final residual = 0.00093447, No Iterations 6
+time step continuity errors : sum local = 1.56933e-05, global = 8.50669e-06, cumulative = 0.00013413
+DICPCG:  Solving for p_rgh, Initial residual = 0.00208088, Final residual = 9.2839e-08, No Iterations 79
+time step continuity errors : sum local = 7.60143e-06, global = 7.60065e-06, cumulative = 0.000141731
+DILUPBiCGStab:  Solving for T, Initial residual = 0.057389, Final residual = 3.25788e-09, No Iterations 4
+ExecutionTime = 3.05 s  ClockTime = 3 s
+
+Courant Number mean: 0.00806067 max: 0.263642
+Interface Courant Number mean: 6.54156e-05 max: 0.241113
+deltaT = 0.000603767
+Time = 0.00309451
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.0708895, Final residual = 1.25152e-09, No Iterations 4
+Phase-1 volume fraction = 4.5672e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.0123959
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 4.56721e-05  Min(alpha.metal) = -3.15656e-24  Max(alpha.metal) = 0.0123959
+smoothSolver:  Solving for Ux, Initial residual = 0.177027, Final residual = 2.52418e-08, No Iterations 4
+smoothSolver:  Solving for Uy, Initial residual = 0.175993, Final residual = 5.86499e-07, No Iterations 3
+smoothSolver:  Solving for Uz, Initial residual = 0.185048, Final residual = 4.31865e-08, No Iterations 4
+DICPCG:  Solving for p_rgh, Initial residual = 0.103421, Final residual = 0.0047008, No Iterations 7
+time step continuity errors : sum local = 6.4262e-05, global = 7.00973e-06, cumulative = 0.000148741
+DICPCG:  Solving for p_rgh, Initial residual = 0.0136315, Final residual = 8.15792e-08, No Iterations 94
+time step continuity errors : sum local = 8.9122e-06, global = 8.91107e-06, cumulative = 0.000157652
+DILUPBiCGStab:  Solving for T, Initial residual = 0.0436577, Final residual = 3.35216e-09, No Iterations 5
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.metal, Initial residual = 0.0355512, Final residual = 1.44823e-09, No Iterations 4
+Phase-1 volume fraction = 4.56719e-05  Min(alpha.metal) = 0  Max(alpha.metal) = 0.0124369
+MULES: Correcting alpha.metal
+MULES: Correcting alpha.metal
+Phase-1 volume fraction = 4.56719e-05  Min(alpha.metal) = -1.45963e-24  Max(alpha.metal) = 0.0124369
+smoothSolver:  Solving for Ux, Initial residual = 0.019582, Final residual = 1.18093e-07, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.0190624, Final residual = 8.0111e-08, No Iterations 3
+smoothSolver:  Solving for Uz, Initial residual = 0.0313542, Final residual = 2.43858e-07, No Iterations 3
+DICPCG:  Solving for p_rgh, Initial residual = 0.021582, Final residual = 0.00101731, No Iterations 6
+time step continuity errors : sum local = 2.26306e-05, global = 1.07279e-05, cumulative = 0.00016838
+DICPCG:  Solving for p_rgh, Initial residual = 0.00303244, Final residual = 8.2889e-08, No Iterations 90
+time step continuity errors : sum local = 8.91218e-06, global = 8.91117e-06, cumulative = 0.000177291
+DILUPBiCGStab:  Solving for T, Initial residual = 0.0553018, Final residual = 2.94265e-09, No Iterations 5
+ExecutionTime = 3.39 s  ClockTime = 3 s
+
+End
+
+Finalising parallel run

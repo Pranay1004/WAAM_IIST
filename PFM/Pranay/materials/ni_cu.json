@@ -1,0 +1,35 @@
+{
+  "alloy_name": "Nickel-Copper Binary (Ni-40.83wt%Cu)",
+  "composition": "Ni-40.83wt%Cu (c0 = 0.4083)",
+  "base_metal": "Ni",
+  "solute": "Cu",
+  "solidification_mode": "Isothermal / Directional Binary Solidification",
+  "reference": "Wheeler, Boettinger, McFadden (1993); SC19B032 IIST Thesis",
+  "thermodynamics": {
+    "T_liquidus_K": 1574.0,
+    "T_solidus_K": 1530.0,
+    "delta_T0_K": 44.0,
+    "T_isothermal_K": 1554.0,
+    "latent_heat_A_J_m3": 2.35e9,
+    "latent_heat_B_J_m3": 1.75e9,
+    "Tm_A_K": 1728.0,
+    "Tm_B_K": 1358.0,
+    "specific_heat_J_m3_K": 5.42e6,
+    "density_liquid_kg_m3": 8900.0,
+    "thermal_diffusivity_m2_s": 1.55e-5,
+    "interfacial_energy_J_m2": 0.37,
+    "molar_volume_m3_mol": 7.1e-6
+  },
+  "calphad_partitioning": {
+    "k_equilibrium": 0.82,
+    "liquidus_slope_K_wt": -5.3,
+    "diffusivity_liquid_m2_s": 1.0e-9,
+    "diffusivity_solid_m2_s": 1.0e-13
+  },
+  "acoustics": {
+    "sound_speed_liquid_m_s": 4200.0,
+    "blake_threshold_mpa": 0.70,
+    "attenuation_coeff_Np_m": 0.11,
+    "viscosity_liquid_Pa_s": 0.0050
+  }
+}

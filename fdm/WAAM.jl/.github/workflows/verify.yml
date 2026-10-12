@@ -1,0 +1,28 @@
+name: Verification (full)
+
+# The operator-level verification suite is the release gate. It runs nightly, on demand,
+# and on a schedule — NOT on every pull request, so the fast CI loop stays quick.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.13"
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - name: Full verification suite
+        uses: julia-actions/julia-runtest@v1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-artifacts
+          path: |
+            waam_output/
+            test/artifacts/

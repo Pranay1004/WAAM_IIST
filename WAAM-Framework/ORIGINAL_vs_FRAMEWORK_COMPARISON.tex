@@ -1,0 +1,857 @@
+% ============================================================
+% Comparison: WAAM-MultiLayer-Simulation (original) vs WAAM-Framework
+% Compile: pdflatex ORIGINAL_vs_FRAMEWORK_COMPARISON.tex
+% ============================================================
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[top=2.0cm, bottom=2.0cm, left=1.8cm, right=1.8cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{mathptmx}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+\usepackage{enumitem}
+\usepackage{ragged2e}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=black]{hyperref}
+
+\definecolor{rowalt}{HTML}{F2F2F2}
+\setlength{\extrarowheight}{1.5pt}
+\renewcommand{\arraystretch}{1.15}
+
+\setstretch{1.08}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{Original vs.\ Framework --- WAAM Simulation Code Comparison}}
+\fancyhead[R]{\small\textit{P. K. Pandey (SC25M147)}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.7em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\small\bfseries\itshape}{\thesubsubsection}{0.4em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.6em}
+\titlespacing*{\subsection}{0pt}{1.1em}{0.4em}
+\titlespacing*{\subsubsection}{0pt}{0.9em}{0.3em}
+
+\newcommand{\yes}{\textcolor{blue!55!black}{\textbf{Yes}}}
+\newcommand{\no}{\textcolor{red!60!black}{\textbf{No}}}
+\newcommand{\na}{---}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\file}[1]{\texttt{\small #1}}
+
+\begin{document}
+
+% ------------------------------------------------------------
+\begin{center}
+    {\LARGE\bfseries A Detailed Comparison of Two WAAM Simulation Codes\par}
+    \vspace{0.5em}
+    {\large\textbf{Original \textit{WAAM-MultiLayer-Simulation} (FreeFEM++ single
+    script) versus the derived \textit{WAAM-Framework} (multiphysics FEM
+    platform)}\par}
+    \vspace{0.7em}
+    {\large P.~K.~Pandey (SC25M147) \quad$\cdot$\quad IIST \quad$\cdot$\quad
+    13 October 2026\par}
+\end{center}
+\vspace{0.3em}
+
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{%
+\small\textbf{Scope of this document.}
+Two code bases held under \code{Desktop/WAAM/} were compared line by line:
+(i) the \emph{original} upstream repository
+\code{WAAM-Framework/original\_git\_file/} containing \file{README.md}
+(434~lines) and \file{downloaded.edp} (534~lines) --- a single hand-written
+FreeFEM++ script; and (ii) the \emph{framework} \code{WAAM-Framework/},
+containing 28{,}595~lines of Python across 40~source files, 3{,}571~lines of
+reference \code{.edp} modules, and a code generator that emits scripts of up to
+$\sim$3{,}150~lines. All line counts, file names and line references below were
+measured from the working tree on 13 October 2026.}}
+
+\vspace{1.0em}
+
+% ============================================================
+\section{Executive Summary}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Head-to-head summary of the two code bases.}
+\label{tab:summary}
+\small
+\begin{tabularx}{\linewidth}{@{}l X X@{}}
+\toprule
+\textbf{Dimension} & \textbf{Original} & \textbf{Framework} \\
+\midrule
+Nature & One hand-written FreeFEM++ script plus a README &
+Layered Python application that \emph{generates} FreeFEM++ scripts \\
+\addlinespace
+Scale & 968 lines, 2 files & 28{,}595 lines Python + 3{,}571 lines
+\code{.edp} + generator ($\sim$40$\times$) \\
+\addlinespace
+Workflow & Edit \code{.edp} $\rightarrow$ \code{FreeFem++ waam\_multilayer.edp}
+$\rightarrow$ open \code{waam.pvd} in ParaView &
+GUI (12 tabs) or CLI $\rightarrow$ slice STL $\rightarrow$ mesh $\rightarrow$
+generate $\rightarrow$ solve (serial/MPI) $\rightarrow$ plots + HTML report \\
+\addlinespace
+Geometry & Hard-coded 26\,$\times$\,3\,mm wall on a
+200\,$\times$\,100\,$\times$\,10\,mm plate &
+Arbitrary STL/STEP/IGES/BREP, parametric walls, G-code-driven toolpaths \\
+\addlinespace
+Heat source & Goldak double ellipsoid only & 7 selectable models \\
+\addlinespace
+Material & Mild steel S235 hard-coded & 8-alloy JSON database, dual
+substrate/deposit assignment \\
+\addlinespace
+Mechanics & Single post-hoc \emph{elastic} solve, inherent strain &
+Incremental \textbf{J2 thermo-elasto-plasticity}, Newton with consistent
+tangent, TRIP, springback \\
+\addlinespace
+Thermal extras & Conduction + convection & + radiation, boiling cap,
+enthalpy-exact latent heat, adaptive $\Delta t$, Picard correctors,
+target-temperature inter-pass control \\
+\addlinespace
+Beyond original scope & --- & OpenFOAM VOF melt-pool CFD, ultrasonic (UVA)
+assistance, microstructure and Vickers hardness prediction \\
+\addlinespace
+Verification & None & 11-group physics suite, J2 cross-check, external
+CAS-DED benchmark, pytest suite \\
+\addlinespace
+Portability & \code{D:\textbackslash freefem++\textbackslash...} hard-coded &
+Binary discovery + environment overrides, MPI, self-contained timestamped run
+directories \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{One-sentence verdict.} The original is a \emph{research
+artifact} --- correct, minimal and self-documenting --- while the framework is
+an \emph{engineering platform} that retains the original physics as its inner
+core and rebuilds everything around it: geometry, toolpath, materials,
+plasticity, user interface, verification and reporting.
+
+% ============================================================
+\section{The Original: What It Actually Does}
+% ============================================================
+
+\subsection{Physics implemented in \file{downloaded.edp}}
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.15em]
+    \item \textbf{3D transient heat equation}, $\theta$-scheme with
+    $\theta = 0.5$ (Crank--Nicolson), P1 elements, UMFPACK direct solver
+    (lines 196--225).
+    \item \textbf{Goldak double-ellipsoid} moving source with
+    $a_f = 8$, $a_r = 20$, $b_G = 7$, $c_G = 4$\,mm, $f_f = 0.6$,
+    $f_r = 1.4$, a $\tanh$ front/rear split ($\varepsilon_{\text{split}} =
+    10^{-3}$) and amplitude
+    \begin{equation}
+        Q_0 \;=\; \frac{6\sqrt{3}\,f\,P}{\pi\sqrt{\pi}\,a\,b\,c},
+        \qquad P = I\,U\,\eta = 200 \times 24 \times 0.8 = 3840\ \text{W}.
+        \label{eq:goldak}
+    \end{equation}
+    \item \textbf{Process schedule}: $v_{\text{scan}} = 10$\,mm/s,
+    $t_{\text{pass}} = 20$\,s, $t_{\text{wait}} = 60$\,s,
+    $t_{\text{total}} = 2080$\,s, 26 layers.
+    \item \textbf{Quiet-element activation}: inactive deposit nodes receive
+    $k_{\text{eff}} = 10^{-4}k$ and $C_{p,\text{eff}} = 10^{-4}C_p$; nodes are
+    born progressively when $x_{\text{torch}} \ge x_{\text{node}}$ inside the
+    weld loop; the source is \emph{masked} by $\psi_{\text{active}}$ so the arc
+    cannot heat material that does not yet exist (lines 271--309). The README
+    identifies this as the number-one correctness requirement: without it,
+    $C_p \approx 0$ produces $10^{7}\,^\circ$C spikes.
+    \item \textbf{Temperature-dependent properties}: $k(T)$ falling
+    $60 \rightarrow 38 \rightarrow 27$\,W/mK, $C_p(T)$ with a Curie peak of
+    5000\,J/kgK at $720\,^\circ$C, $T_{\text{sol}} = 1450\,^\circ$C,
+    $T_{\text{liq}} = 1520\,^\circ$C.
+    \item \textbf{Boundaries}: $h_{\text{bot}} = 50$ on face~1 (bottom),
+    $h_{\text{conv}} = 15$ on faces 2--6. \emph{No radiation, no fusion latent
+    heat, no boiling cap} --- conduction and convection only.
+    \item \textbf{Fixed three-step timestepping}: $\Delta t_{\text{weld}} =
+    0.333$\,s (so $v\Delta t \approx 0.5\,h_x$), $\Delta t_{\text{wait}} =
+    10$\,s, $\Delta t_{\text{cool}} = 120$\,s $\times$ 20 steps.
+    \item \textbf{Mechanical stage (post-hoc)}: accumulate eigenstrain
+    $\varepsilon^{\text{th}} \mathrel{+}= \alpha\,\Delta T$ with
+    $\alpha = 2.1\times10^{-5}$ at every step, then a single linear-elastic
+    solve with $E(T)$ from 210 to 80\,GPa and $\nu = 0.3$, bottom face fixed,
+    written to \code{waam\_mech.vtu} (lines 464--525).
+\end{itemize}
+
+\subsection{Mesh and output}
+
+Two \code{cube()} meshes are concatenated with
+\code{Th = ThBase + ThDep}: base $30\times20\times8$, deposit
+$30\times6\times26$, scaled by linear \code{movemesh3} only (a documented
+FreeFEM 4.15 / Windows workaround forbidding trigonometric transforms). The
+result is approximately 11{,}687 nodes and 56{,}880 tetrahedra, with one
+element per layer in $z$.
+
+Outputs are \code{waam.pvd}, \code{T\_NNNN.vtu} (fields \code{TempC},
+\code{Activation}), \code{waam\_mech.vtu} and \code{waam\_data.csv} with eight
+columns, all written to the hard-coded path
+\code{D:\textbackslash freefem++\textbackslash arc\_waam\_simulation\textbackslash}.
+
+\subsection{Known quirks in the original}
+\begin{enumerate}[leftmargin=1.6em,itemsep=0.15em]
+    \item \textbf{Header/code mismatch.} The comments promise ``activation via
+    a gradual $\tanh$ ramp over 5\,s'' and ``$T = T_{\text{liq}}$ on
+    activation''; the code switches $\psi_{\text{active}}$ instantly at
+    $x_{\text{torch}} + a_f$ and initialises at $T_{\text{amb}}$
+    (deliberately --- see the comment at line 92 warning that
+    $T_{\text{dep,init}} = T_{\text{liq}}$ causes double heating).
+    \item \textbf{Non-conforming interface.} \code{ThBase + ThDep} merges no
+    nodes: the substrate has 5.0\,mm $y$-spacing and the deposit 1.33\,mm, so
+    the two blocks are not bonded.
+    \item \textbf{No radiation / latent heat / evaporation} despite peak
+    temperatures near $1900\,^\circ$C.
+    \item \textbf{Elastic-only residual stress} --- no yield limit, so the
+    reported von Mises stress can exceed the material's strength.
+\end{enumerate}
+
+% ============================================================
+\section{Architecture: Monolith to Platform}
+% ============================================================
+
+The structural change that dominates every other difference is that
+\emph{the physics stopped being the source code and became an emission
+target}. \code{EDPBuilder.build()} (\file{codegen/edp\_builder.py}, line 1474)
+assembles a script from more than twenty ordered sections:
+
+\begin{quote}\small\ttfamily
+GEOMETRY \(\rightarrow\) PROCESS \(\rightarrow\) FEEDSTOCK \(\rightarrow\)
+MATERIAL \(\rightarrow\) TIMESTEP \(\rightarrow\) G-CODE READER \(\rightarrow\)
+MESH \(\rightarrow\) ADAPTIVE dt \(\rightarrow\) FE SPACES \(\rightarrow\)
+\textbf{THERMO-ELASTO-PLASTIC ENGINE} \(\rightarrow\) FORMS \(\rightarrow\)
+PROBES \(\rightarrow\) OUTPUT \(\rightarrow\) RESTART \(\rightarrow\)
+DEPOSITION LOOP \(\rightarrow\) FINAL COOLING \(\rightarrow\) MECHANICAL
+\(\rightarrow\) MICROSTRUCTURE \(\rightarrow\) VALIDATION GATE
+\(\rightarrow\) solver\_results.json
+\end{quote}
+
+\begin{table}[h!]
+\centering
+\caption{Largest source files by line count (excluding caches and run
+artefacts).}
+\label{tab:loc}
+\small
+\begin{tabular}{@{}r l l@{}}
+\toprule
+\textbf{Lines} & \textbf{File} & \textbf{Role} \\
+\midrule
+6\,959 & \file{gui/app.py} & Tkinter desktop GUI, 12 tabs \\
+4\,992 & \file{codegen/edp\_builder.py} & FreeFEM script generator \\
+1\,958 & \file{core/fluid/openfoam\_coupling.py} & OpenFOAM case generation \\
+1\,464 & \file{tests/physics\_suite.py} & 279 automated checks \\
+1\,419 & \file{postprocess/plot\_generator.py} & 8 publication plots \\
+1\,331 & \file{gui/widgets/waam\_3d\_studio.py} & Three.js WebGL viewer \\
+1\,255 & \file{core/postprocess/output\_manager.py} & Summaries, reports \\
+1\,242 & \file{gui/widgets/mesh\_viewer\_3d.py} & Embedded PyVista viewport \\
+1\,174 & \file{postprocess/report\_generator.py} & HTML engineering report \\
+\midrule
+\multicolumn{3}{@{}l}{\textit{Original: \file{downloaded.edp} = 534 lines,
+\file{README.md} = 434 lines}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two hand-maintained \code{.edp} files survive as static presets rather than
+generator output:
+\begin{itemize}[leftmargin=1.4em,itemsep=0.15em]
+    \item \file{DEFAULT.edp} / \file{generated\_edps/DEFAULT.edp} (655 lines)
+    --- the original's architecture \emph{with fixes}: an enthalpy-exact
+    piecewise-linear $C_p$ band over $[T_{\text{sol}}, T_{\text{liq}}]$, a
+    quiet method that quenches only $k$ (retaining full mass so diffusivity
+    collapses instead of thermal mass), linearised Stefan--Boltzmann radiation
+    ($\varepsilon = 0.7$), a boiling cap at $T_{\text{boil}} = 2862\,^\circ$C
+    with an $E_{\text{cap}}$ energy audit, and an explicit caveat that the
+    mechanical stage is a ``post-hoc ELASTIC estimate (no plasticity)'';
+    \item \file{generated\_edps/uva\_waam\_ss308l\_ss316.edp} (859 lines) ---
+    SS316 substrate with SS308L deposit over 33 layers and \emph{ultrasonic
+    vibration assistance} (20\,kHz, 15\,$\mu$m, Blaha yield softening).
+\end{itemize}
+
+% ============================================================
+\section{Geometry and Meshing}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Geometry and mesh pipeline comparison.}
+\label{tab:mesh}
+\small
+\begin{tabularx}{\linewidth}{@{}l X X@{}}
+\toprule
+& \textbf{Original} & \textbf{Framework} \\
+\midrule
+Input & None (hard-coded) & STL, STEP, STP, IGES, IGS, BREP, PLY, OBJ, G-code \\
+\addlinespace
+Mesher & FreeFEM \code{cube()} $\times 2$ & Gmsh OCCT volume meshing
+(\file{mesh/stl\_pipeline.py:541}) \emph{or} pure-Python graded structured
+mesh (\file{mesh/structured\_conforming.py:464}) \\
+\addlinespace
+Sizing & Fixed $30\times20\times8$ / $30\times6\times26$ & Rule-based engine,
+3 strategies, node budget 1500/2500/5000/custom
+(\file{mesh/intelligent\_mesher.py:29}) \\
+\addlinespace
+Interface & \code{ThBase + ThDep} $\rightarrow$ \textbf{zero-width crack} &
+\textbf{Single conforming mesh, nodes shared by construction} \\
+\addlinespace
+Labels & Implicit & Enforced: 1 = bottom, 5 = top, 2/3/4/6 = flanks, shared by
+mesher and generated forms \\
+\addlinespace
+Quality control & None & Signed-volume, orientation and outward-normal checks;
+the mesher \emph{raises} rather than emit an unusable mesh
+(\file{edp\_builder.py:3168}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The conforming-mesh work is the framework's most consequential \emph{correctness}
+fix. The crack produced by the original's mesh union was measured on a running
+model at a \textbf{19.9\,$^\circ$C mean and 92.9\,$^\circ$C peak} temperature
+discontinuity across the interface --- i.e.\ no genuine conduction and no
+mechanical bond between substrate and deposit.
+
+% ============================================================
+\section{Toolpath: Linear Scan to Slicer and G-code}
+% ============================================================
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+    \item \textbf{Original:} the torch traverses $x = 0 \rightarrow 200$\,mm in
+    one direction, every layer, at constant $v_{\text{scan}}$.
+    \item \textbf{Framework:} \file{mesh/slicer\_api.py} (695 lines) slices
+    geometry into layers using five infill patterns (zigzag, meander, contour,
+    crosshatch, unidirectional) with overlap, perimeters and bidirectional
+    reversal, emitting \code{toolpath.gcode}, \code{toolpath.txt} and
+    \code{layer\_times.txt}. \file{mesh/gcode\_parser.py} (411 lines) parses
+    G0/G1/\textbf{G2/G3 arcs} into solver arrays.
+    \item The generated script reads \code{toolpath.txt} ($t$, $x$, $y$, $z$,
+    power) and \code{layer\_pass\_times.txt}, gates the arc off during rapid
+    travels, supports a direction sign for zig-zag layers, and clamps the
+    activation lookup with an ``afterProgram'' guard so an over-energised arc
+    is not re-applied after the program ends.
+\end{itemize}
+
+% ============================================================
+\section{Thermal Physics}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Thermal formulation comparison.}
+\label{tab:thermal}
+\small
+\begin{tabularx}{\linewidth}{@{}l X X@{}}
+\toprule
+\textbf{Aspect} & \textbf{Original} & \textbf{Framework} \\
+\midrule
+Scheme & $\theta = 0.5$, one solve per step & $\theta$-scheme + Picard
+correctors (3 passes, $0.5\,^\circ$C tolerance) for non-linearity \\
+\addlinespace
+Timestepping & Three fixed steps (0.333 / 10 / 120\,s) & Fixed \emph{or}
+adaptive Fourier-number controller (Fo target 0.45, torch-advance cap,
+runaway guard) \\
+\addlinespace
+Latent heat & $C_p$ spike to 5000\,J/kgK at the Curie point only; no fusion
+latent & Enthalpy-exact piecewise-linear $C_p$ band over
+$[T_{\text{sol}}, T_{\text{liq}}]$ preserving $\int C_p\,dT$
+(fixes $\sim$10\,\% energy error) \\
+\addlinespace
+Radiation & None & Linearised Stefan--Boltzmann on all outer surfaces,
+emissivity per alloy \\
+\addlinespace
+Evaporation & None & Boiling cap at $T_{\text{boil}}$ with $E_{\text{cap}}$
+energy accounting \\
+\addlinespace
+Inter-pass control & Fixed $t_{\text{wait}} = 60$\,s & \code{time} mode (as
+original) \emph{or} \code{target} mode --- iterative cooldown to a target peak
+temperature (default $400\,^\circ$C) with convergence test and iteration cap \\
+\addlinespace
+Quiet elements & $k$ and $C_p$ both scaled by $10^{-4}$ & $k$ quenched with
+full mass retained; plus optional prescribed-$T$ birth (Ansys-style liquidus
+gate) \\
+\addlinespace
+Energy audit & \code{Tmax} printed to the console & \code{solver\_results.json}
+balances intended arc, injected arc, stored enthalpy, boiling-cap removal,
+surface losses, quiet-node discard, floor additions and numerical residual \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Heat Sources}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Available volumetric and surface heat-source models.}
+\label{tab:src}
+\small
+\begin{tabularx}{\linewidth}{@{}l c c X@{}}
+\toprule
+\textbf{Model} & \textbf{Orig.} & \textbf{Fwk.} & \textbf{Notes} \\
+\midrule
+Goldak double ellipsoid & \yes & \yes & Identical algebra to
+Eq.~\eqref{eq:goldak} --- direct carry-over \\
+Gaussian volumetric & \no & \yes & $Q_0 = 3\sqrt{3}P/(\pi\sqrt{\pi}R^3)$ \\
+Gaussian surface & \no & \yes & Neumann \code{int2d} boundary condition \\
+Conical frustum (keyhole) & \no & \yes & $R(\zeta) = r_t + (r_b - r_t)\zeta/d_{\text{pen}}$ \\
+Uniform band & \no & \yes & $\tanh$-smoothed box \\
+Prescribed temperature & \no & \yes & Post-solve $T = T_{\text{liq}}$ inside the activation radius \\
+P48 arc/droplet partition & \no & \yes & \emph{Prog.\ Addit.\ Manuf.}\ 1 (2025) 10:11647; empirical $\sigma_q = 6.205\times10^{-4} I^{0.28}$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent All models remain masked by $\psi_{\text{active}}$ --- the original's
+key insight, preserved intact. Automatic source sizing keeps the semi-axes at or
+above the local element size with a fidelity floor
+(\code{\_auto\_size\_source}, \file{edp\_builder.py:468}). The six files under
+\code{core/heat\_sources/*.edp} are explicitly marked \emph{standalone reference
+modules --- not wired into the pipeline}; the live physics is whatever
+\code{EDPBuilder} emits.
+
+% ============================================================
+\section{Materials}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Material data comparison.}
+\label{tab:mat}
+\small
+\begin{tabularx}{\linewidth}{@{}l X X@{}}
+\toprule
+& \textbf{Original} & \textbf{Framework} \\
+\midrule
+Source & \code{kSteel(T)}, \code{CpSteel(T)} written inline &
+\file{core/multimaterial/material\_database.json} (1{,}309 lines) \\
+\addlinespace
+Alloys & 1 (S235/A36 mild steel) & 8: AlSi10Mg, ER70S-6, IN625, Pure Al,
+SS304, SS308L, SS316L, Ti-6Al-4V \\
+\addlinespace
+Data & $k$, $C_p$, $\rho$, $T_{\text{sol}}$, $T_{\text{liq}}$, $E$, $\nu$ &
++ $\nu$, latent heat, emissivity, composition, temperature tables for
+$k$/$E$/$\sigma_y$/$\alpha$, phase transformation, hardness coefficients, wire
+diameters \\
+\addlinespace
+Assignment & One material for the whole domain & \textbf{Dual}: substrate and
+deposit alloys chosen independently, with a dissimilar-metal
+CTE/thermophysical compatibility report \\
+\addlinespace
+Phase kinetics & None & \file{core/multimaterial/alloy\_metallurgy.py}: 5
+phase families $\times$ 4 phases (Burgers BOR, WRC-1992 + Hall-Petch,
+Scheil/Laves, cellular eutectic, Kirkaldy-Venugopalan + Koistinen-Marburger),
+IIW carbon equivalent, WRC Cr/Ni equivalents \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Mechanics: Elastic Estimate to Incremental Plasticity}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Mechanical formulation comparison.}
+\label{tab:mech}
+\small
+\begin{tabularx}{\linewidth}{@{}l X X@{}}
+\toprule
+& \textbf{Original} & \textbf{Framework} \\
+\midrule
+Formulation & One post-hoc linear-elastic solve &
+Incremental J2 thermo-elasto-plasticity, backward-Euler radial return \\
+\addlinespace
+Tangent & n/a & Consistent-tangent Newton (default) or Picard, with force and
+displacement residuals recorded \\
+\addlinespace
+Hardening & None & Isotropic $H'$ \\
+\addlinespace
+TRIP & None & Transformation strain $\beta = 0.011$ \\
+\addlinespace
+Remelt & Eigenstrain keeps growing unphysically & Plastic memory reset on
+remelt; above-solidus ``slurry'' stiffness cut avoids singular degrees of
+freedom \\
+\addlinespace
+Eigenstrain & $\varepsilon^{\text{th}}$ accumulated from $t=0$, can exceed
+yield $\rightarrow$ phantom stress & Correct eigenstress subtraction;
+\file{DEFAULT.edp} documents the phantom-stress fix \\
+\addlinespace
+Boundary conditions & Bottom fixed only & Isostatic / fixture-clamped /
+cantilever, fixture stiffness, springback with fixture-release regularisation,
+gravity \\
+\addlinespace
+Discretisation & P1 only & P1 or P2; legacy inherent-strain fallback retained
+but disabled \\
+\addlinespace
+Output & \code{waam\_mech.vtu}, maxima to console & + PEEQ, per-frame von
+Mises, Newton convergence in \code{solver\_results.json}, checkpoint/restart \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\section{New Physics Domains Absent from the Original}
+% ============================================================
+
+\begin{enumerate}[leftmargin=1.8em,itemsep=0.35em]
+    \item \textbf{OpenFOAM melt-pool CFD.} \file{core/fluid/openfoam\_coupling.py}
+    (1{,}958 lines) generates an OpenFOAM 2412 \code{beamWeldFoam} case:
+    volume-of-fluid two-phase (metal plus atmosphere),
+    diverging-oscillating-Gaussian melting source, Marangoni shear, vapour
+    recoil and a Darcy mushy-zone sink. It maps
+    $I\,U\,\eta \rightarrow$ \code{MELTING/HS\_Q},
+    $v_{\text{scan}} \rightarrow$ \code{HS\_velocity} and
+    $b_G \rightarrow$ \code{HS\_a}, then writes \code{cfd\_history.csv},
+    plots and \code{cfd\_report.html}.
+    \item \textbf{Ultrasonic vibration assistance (UVA).} 20\,kHz /
+    15\,$\mu$m with four acoustic modules (streaming, heat generation,
+    cavitation, momentum transfer); amplitude acts on the \emph{yield surface}
+    (Blaha softening) rather than on Young's modulus, with a layer-by-layer
+    multi-material zone table.
+    \item \textbf{Microstructure and hardness.} G/R solidification map, JMAK
+    kinetics, secondary dendrite-arm-spacing laws per alloy family, reheat
+    anneal factors and discrete Vickers indentation predictions, producing
+    \code{hardness\_profile\_z.csv} and \code{hardness\_test\_locations.csv}.
+    \item \textbf{Reference modules not yet wired:} Marangoni melt pool,
+    vibration acoustics and solidification-phase \code{.edp} files under
+    \code{core/}; the \code{core/thermal/} and \code{core/mechanical/}
+    directories are empty.
+\end{enumerate}
+
+% ============================================================
+\section{Output and Postprocessing}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Output artefacts and postprocessing.}
+\label{tab:out}
+\small
+\begin{tabularx}{\linewidth}{@{}l X X@{}}
+\toprule
+& \textbf{Original} & \textbf{Framework} \\
+\midrule
+Fields & \code{TempC}, \code{Activation}, \code{Ux Uy Uz DispMag SigMises} &
++ PEEQ, per-frame mechanics, UVA fields, \code{VickersHV} \\
+\addlinespace
+Files & \code{waam.pvd}, \code{T\_*\_*.vtu}, \code{waam\_mech.vtu},
+\code{waam\_data.csv} & + \code{solver\_results.json},
+\code{run\_summary.json}, \code{parameters.json}, \code{probe\_points.csv},
+\code{probe\_paths.csv}, hex-VTK conversions, \code{waam\_3d\_studio.html} \\
+\addlinespace
+Plots & None --- the README asks the user to write matplotlib by hand &
+8 publication figures at 300\,dpi: thermal history and peaks, cooling rates
+and $t_{8/5}$, distortion and warpage, von Mises, heat input and dwell energy,
+baseplate thermal cycle with elevation probes, spatial stress paths (sections
+A--A, B--B), normalised warpage index \\
+\addlinespace
+Reports & None & \code{report.html} (two-page A4), \code{run\_summary.json},
+ParaView loader script, \code{cfd\_report.html}, toolpath GIF, uncut 3D
+renders \\
+\addlinespace
+Visualisation & Manual ParaView & Embedded PyVista viewport, standalone
+PyVista GPU window, Three.js WebGL studio (assets inlined for offline use) with
+heat-source inspector and G-code playback $1\times$--$50\times$; ParaView still
+one click away \\
+\addlinespace
+History output & None & Abaqus-style \code{*OUTPUT,HISTORY} equivalent:
+probe points and paths sampled by the solver at true simulated times \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Workflow and User Experience}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Workflow comparison.}
+\label{tab:ux}
+\small
+\begin{tabularx}{\linewidth}{@{}l X X@{}}
+\toprule
+& \textbf{Original} & \textbf{Framework} \\
+\midrule
+Entry point & Edit the file, run one command & \code{run.py} with ten modes:
+default (GUI), \code{--cli}, \code{--stl}, \code{--slice}, \code{--validate},
+\code{--validate-full}, \code{--generate-only}, \code{--openfoam},
+\code{--uva}, \code{--version} \\
+\addlinespace
+Parameters & 40+ constants at the top of the file & Live GUI with 8 presets,
+units-aware mm/SI conversion, \code{.waam} project save and load \\
+\addlinespace
+GUI & None & Tkinter, 12 tabs: Geometry, Process, Material, Mesh/CAD, Physics,
+Solver, OpenFOAM CFD, Parametric and DOE, 3D Viewport, Script Preview,
+Ultrasonic, Simulation Log --- plus live console, progress parsing, themes and
+tooltips \\
+\addlinespace
+Orchestration & Manual & Five stages --- slice $\rightarrow$ mesh $\rightarrow$
+generate $\rightarrow$ solve $\rightarrow$ postprocess --- into a
+self-contained \code{waam\_output/<timestamp>/} with a \code{latest} pointer \\
+\addlinespace
+Persistence & Rewrite the file & \code{.waam} projects,
+\code{parameters.json} as single source of truth, checkpoint/restart by layer
+or every $N$ steps \\
+\addlinespace
+Portability & Hard-coded \code{D:\textbackslash freefem++} &
+\code{find\_freefem\_serial/mpi()} plus \code{FREEFEM\_BIN},
+\code{FF\_MPIRUN}, \code{PARAVIEW\_BIN} overrides; macOS bundle default; a
+pseudo-terminal wrapper so FreeFEM's standard output flushes line by line \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent A telling detail of continuity: the GUI's progress bar parses
+\emph{the original script's log lines} (\code{--- Layer n/N},
+\code{ws=... Tmax=...}, \code{Inter-pass}), \file{gui/app.py:6112--6151}.
+
+% ============================================================
+\section{Verification and Validation}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Verification suites present in the framework (none exist upstream).}
+\label{tab:vv}
+\small
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+\toprule
+\textbf{Suite} & \textbf{What it checks} \\
+\midrule
+\file{tests/physics\_suite.py} (1{,}464 lines) & 11 groups, 279 assertions:
+heat-source normalisation, latent enthalpy, VOF, ferrite number, builder
+markers, static-preset integrity, \code{.edp} module structure, incremental
+mechanics, history/restart, structured results, conforming interface \\
+\addlinespace
+\file{tests/validate\_j2\_mechanics.py} (203) & Elastic baseline against J2
+plasticity (radial return, TRIP, annealing) on an identical two-layer mesh \\
+\addlinespace
+\file{tests/validate\_cas\_ded\_dimeen26.py} (599) & \textbf{External
+benchmark CAS-DEDD-IMEEN26} (Ansys / TU Wien 2026, AlSi10Mg DED): reference
+targets 0.25\,mm max deformation, $4\times10^{-2}$\,mm mean, 580\,$^\circ$C
+process temperature, 50\,mm$^3$/s, 2.5\,mm bead radius. Executes a real FreeFEM
+run, therefore gated behind \code{--validate-full} \\
+\addlinespace
+\file{tests/test\_wall\_probes\_ultrasonic.py} (219) & pytest: deposition
+-pattern codegen, ultrasonic gating, probe stations, plot generation \\
+\addlinespace
+\file{parametric\_sweep.py} (324) & Six cases varying current, voltage, wire
+feed, speed, bead dimensions and layer count, with an incrementally written
+\code{sweep\_timing\_summary.json} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Lineage: What Came From the Original}
+% ============================================================
+
+\subsection{Direct carry-over}
+
+\begin{enumerate}[leftmargin=1.8em,itemsep=0.2em]
+    \item The $\theta$-scheme 3D transient variational forms --- same structure
+    as \code{aThermal}/\code{lThermal}, \file{downloaded.edp:199--225}.
+    \item The Goldak double ellipsoid with $\tanh$ front/rear split and
+    $f_f = 0.6$, $f_r = 1.4$ --- identical algebra.
+    \item Quiet-element activation with $\psi_{\text{active}}$ source masking
+    --- the original's central correctness insight, retained everywhere.
+    \item Progressive $x$-based node activation inside the weld loop.
+    \item The inter-pass cooling cadence and the weld / wait / cooldown stage
+    structure of the deposition loop.
+    \item Cumulative thermal eigenstrain accumulation
+    $\varepsilon^{\text{th}} \mathrel{+}= \alpha\,\Delta T$.
+    \item The boundary-label scheme (1 bottom, 5 top, 2/3/4/6 sides) and the
+    PVD / VTU / \code{waam\_data.csv} output contract.
+    \item The console progress format --- which the GUI now parses.
+    \item The default geometry: $n_{\text{layers}} = 26$, 200\,mm length,
+    8\,mm bead width, 200\,A / 24\,V / $\eta = 0.8$ / 10\,mm/s.
+\end{enumerate}
+
+\subsection{Evolved or corrected}
+
+\begin{table}[h!]
+\centering
+\caption{Places where the framework deliberately departs from the original.}
+\label{tab:fixes}
+\small
+\begin{tabularx}{\linewidth}{@{}X X@{}}
+\toprule
+\textbf{Original} & \textbf{Framework} \\
+\midrule
+$C_p$ and $k$ both scaled by $10^{-4}$ in quiet elements & Quench only $k$,
+keep full mass: diffusivity collapses, thermal mass does not \\
+\addlinespace
+No fusion latent heat & Enthalpy-exact piecewise-linear $C_p$ band over
+$[T_{\text{sol}}, T_{\text{liq}}]$ \\
+\addlinespace
+No radiation or boiling cap & Stefan--Boltzmann plus $T_{\text{boil}}$ clip
+with $E_{\text{cap}}$ audit \\
+\addlinespace
+Eigenstrain may exceed yield $\rightarrow$ phantom stress & Correct
+eigenstress subtraction, or full J2 plasticity \\
+\addlinespace
+\code{ThBase + ThDep} non-conforming interface & Single conforming mesh \\
+\addlinespace
+Hard-coded \code{D:\textbackslash} output & Portable, timestamped run
+directories \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Gap Analysis: What the Framework Still Lacks}
+% ============================================================
+
+\begin{enumerate}[leftmargin=1.8em,itemsep=0.3em]
+    \item \textbf{No top-level README} comparable to the original's, which
+    documents physics, geometry, ParaView recipes, an error table, extension
+    ideas and a citation. That knowledge now sits inside GUI dialogs and code
+    comments.
+    \item \textbf{\code{core/heat\_sources/*.edp} and
+    \code{core/\{thermal,mechanical\}} are unwired} --- the reference modules
+    are never executed by the pipeline.
+    \item \textbf{\code{waam\_parametric\_sweep\_comparison\_report.pdf} is not
+    reproducible} --- no code in the repository generates it.
+    \item \textbf{Two millimetre-detection heuristics coexist} ---
+    \file{mesh/units.py} per-key thresholds versus the blanket
+    \code{>0.05} / \code{>0.1} test in \file{run.py}.
+    \item \textbf{\code{test\_wall\_probes\_ultrasonic.py} is outside
+    \code{--validate}} --- a routine health check misses it unless pytest is
+    run separately.
+    \item \textbf{Multi-material per-layer alloy switching is declared but
+    unimplemented}; only the zonal substrate/deposit split works.
+    \item \textbf{The report is HTML, not PDF}, despite ``LaTeX PDF-style''
+    styling.
+    \item \textbf{Licensing} --- see Section~\ref{sec:license}.
+\end{enumerate}
+
+% ============================================================
+\section{Licensing and Provenance}
+\label{sec:license}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Licensing of the two works.}
+\label{tab:lic}
+\small
+\begin{tabularx}{\linewidth}{@{}l X X@{}}
+\toprule
+& \textbf{Original} & \textbf{Framework} \\
+\midrule
+License & CC BY-NC 4.0 & GNU GPL v3.0 or later \\
+\addlinespace
+Holder & Akshansh Mishra (akshansh11) & Pranay1004 and the WAAM\_IIST
+contributors \\
+\addlinespace
+DOI / URL & \url{https://doi.org/10.5281/zenodo.20753459} &
+\url{https://github.com/Pranay1004/WAAM_IIST} \\
+\addlinespace
+Commercial use & Not permitted (NC field) & Permitted; derivatives must remain
+GPL \\
+\addlinespace
+Files in this repository & \code{original\_git\_file/} retained verbatim &
+\code{license/LICENSE}, \code{license/README.md}, \code{license/NOTICE} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent CC BY-NC 4.0 carries a \emph{NonCommercial} field, while the GPL
+deliberately forbids additional restrictions; the two are therefore not
+license-compatible in the direction of relicensing upstream code as GPL. The
+repository does \emph{not} relicense upstream: \code{original\_git\_file/} is
+kept byte-for-byte under CC BY-NC 4.0, only the framework's own source is
+offered under GPL-3.0-or-later, and a recipient must honour both regimes. The
+algorithmic ideas themselves (Goldak source, quiet-element activation,
+progressive torch-triggered birth) are uncopyrightable \emph{methods} and are
+reimplemented from scratch in \file{codegen/edp\_builder.py}; no upstream source
+text is copied into the generator. Third-party components keep their own terms
+(three.js and OrbitControls: MIT; FreeFEM++ and OpenFOAM: GPL, invoked
+externally and never redistributed).
+
+% ============================================================
+\section{Verdict}
+% ============================================================
+
+\begin{table}[h!]
+\centering
+\caption{Qualitative scoring of the two code bases.}
+\label{tab:verdict}
+\small
+\begin{tabularx}{\linewidth}{@{}l c c X@{}}
+\toprule
+\textbf{Dimension} & \textbf{Orig.} & \textbf{Fwk.} & \textbf{Comment} \\
+\midrule
+Correctness of the core thermal solve & Good & Stronger &
+Conforming mesh, energy audit, latent heat, radiation close the original's four
+physical omissions \\
+\addlinespace
+Fidelity of the mechanics & Weak & Strong & Elastic estimate versus validated
+incremental J2 \\
+\addlinespace
+Breadth of physics & Narrow & Broad & + CFD, UVA, microstructure, hardness \\
+\addlinespace
+Realism of geometry and toolpath & Poor & Strong & CAD/G-code, five infill
+patterns \\
+\addlinespace
+Usability & Weak & Strong & GUI, reports, 3D viewers, project files \\
+\addlinespace
+Verification & None & Strong & Four suites plus an external benchmark \\
+\addlinespace
+Documentation & Excellent & Fair & The original's single README was not
+carried forward \\
+\addlinespace
+Accessibility of the physics & Excellent & Weak & 534 readable lines versus a
+4{,}992-line generator \\
+\addlinespace
+Dependency weight & Minimal & Heavy & FreeFEM++ only, versus FreeFEM + Gmsh +
+PyVista + VTK + matplotlib + three.js (+ optional OpenFOAM, pywebview) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Conclusion.} The framework is a strict superset of the
+original: it keeps the original's solver engine (FreeFEM++), Goldak and
+quiet-element physics, output contract and even its log format, then adds
+everything a usable simulation platform requires. Its one regression relative
+to the original is \emph{legibility} --- 534 self-contained, heavily commented
+lines became a 4{,}992-line generator plus forty Python modules, and the
+original's exemplary top-level README was not carried forward. The remedy
+suggested by this comparison is modest: restore a single narrative README at
+the repository root that states the physics, the file map and the validation
+status in the same voice as the upstream document.
+
+% ============================================================
+\section*{References}
+% ============================================================
+\begin{enumerate}[leftmargin=2.2em,itemsep=0.25em,label={[\arabic*]}]
+    \item A.~Mishra. \emph{WAAM-MultiLayer-Simulation}. Zenodo, 2026.
+    \url{https://doi.org/10.5281/zenodo.20753459}. Licensed CC BY-NC 4.0.
+    \item P.~K.~Pandey and the WAAM\_IIST contributors. \emph{WAAM-Framework /
+    WAAM\_IIST}, 2026. \url{https://github.com/Pranay1004/WAAM_IIST}.
+    Licensed GPL-3.0-or-later.
+    \item M.~Goldak, A.~Chakravarti and M.~Bibby. A new finite element model
+    for welding heat sources. \emph{Metallurgical Transactions B},
+    17B:187--193, 1986.
+    \item Progress in Additive Manufacturing, 1:10:11647, 2025 (P48 arc/droplet
+    energy-partition heat source).
+    \item CAS-DEDD-IMEEN26 external validation case (Ansys Academic Program /
+    TU Wien, 2026, AlSi10Mg DED).
+    \item FreeFEM++ finite-element solver, \url{https://freefem.org},
+    version 4.14/4.15.
+    \item OpenFOAM \code{beamWeldFoam}, OpenCFD Ltd., version 2412.
+\end{enumerate}
+
+\end{document}

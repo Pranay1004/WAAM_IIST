@@ -1,0 +1,29 @@
+{
+  "alloy_name": "Al-7Si (A356)",
+  "composition": "Al-7.0Si-0.35Mg (wt%)",
+  "base_metal": "Al",
+  "solidification_mode": "Primary alpha-Al dendrites + Al-Si eutectic",
+  "thermodynamics": {
+    "T_liquidus_K": 888.0,
+    "T_solidus_K": 850.0,
+    "delta_T0_K": 38.0,
+    "T_interpass_K": 373.0,
+    "latent_heat_J_kg": 390000.0,
+    "specific_heat_J_kg_K": 900.0,
+    "density_liquid_kg_m3": 2450.0,
+    "thermal_diffusivity_m2_s": 2.8e-5,
+    "interfacial_energy_J_m2": 0.16,
+    "molar_volume_m3_mol": 10.0e-6
+  },
+  "calphad_partitioning": {
+    "k_Si": 0.13,
+    "liquidus_slope_Si_K_wt": -6.6,
+    "hessian_liquid_J_mol": 28000.0
+  },
+  "acoustics": {
+    "sound_speed_liquid_m_s": 4700.0,
+    "blake_threshold_mpa": 0.55,
+    "attenuation_coeff_Np_m": 0.08,
+    "viscosity_liquid_Pa_s": 0.0013
+  }
+}

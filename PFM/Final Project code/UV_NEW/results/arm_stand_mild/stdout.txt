@@ -1,0 +1,11 @@
+UV settings: mode=2 PA=4.000000e+08 Pa f=1.000000e+07 Hz lambda=4.000000e-06 m dTm_swing=10.000000 K seed=7
+wrote uv_space_1.csv at t=5.000000e-08 s
+wrote uv_space_2.csv at t=1.000000e-07 s
+wrote uv_space_3.csv at t=1.500000e-07 s
+wrote uv_space_4.csv at t=2.000000e-07 s
+wrote uv_space_5.csv at t=2.500000e-07 s
+wrote uv_space_6.csv at t=3.000000e-07 s
+wrote uv_space_7.csv at t=3.500000e-07 s
+wrote uv_space_8.csv at t=4.000000e-07 s
+wrote uv_space_9.csv at t=4.500000e-07 s
+wrote uv_space_10.csv at t=5.000000e-07 s

@@ -1,0 +1,44 @@
+{
+  "alloy_name": "SS308 (AWS ER308L)",
+  "composition": "Fe-20Cr-10Ni (wt%)",
+  "base_metal": "Fe",
+  "solidification_mode": "FA (Primary Ferrite, Ferrite-Austenite Peritectic)",
+  "Cr_eq_wt_pct": 20.0,
+  "Ni_eq_wt_pct": 12.1,
+  "Cr_eq_to_Ni_eq": 1.65,
+  "thermodynamics": {
+    "T_liquidus_K": 1730.0,
+    "T_solidus_K": 1675.0,
+    "delta_T0_K": 55.0,
+    "T_interpass_K": 545.0,
+    "latent_heat_J_kg": 270000.0,
+    "specific_heat_J_kg_K": 650.0,
+    "density_liquid_kg_m3": 6980.0,
+    "thermal_diffusivity_m2_s": 4.8e-6,
+    "interfacial_energy_J_m2": 0.35,
+    "molar_volume_m3_mol": 7.4e-6
+  },
+  "calphad_partitioning": {
+    "k_Cr": 0.95,
+    "k_Ni": 0.78,
+    "liquidus_slope_Cr_K_wt": -4.2,
+    "liquidus_slope_Ni_K_wt": -2.8,
+    "hessian_liquid_J_mol": 48500.0,
+    "hessian_delta_J_mol": 52300.0,
+    "hessian_gamma_J_mol": 56100.0
+  },
+  "acoustics": {
+    "sound_speed_liquid_m_s": 4150.0,
+    "blake_threshold_mpa": 0.69,
+    "attenuation_coeff_Np_m": 0.12,
+    "viscosity_liquid_Pa_s": 0.0055
+  },
+  "solid_state_kinetics": {
+    "transformation_start_T_K": 1650.0,
+    "transformation_end_T_K": 1150.0,
+    "freeze_diffusion_T_K": 1050.0,
+    "target_austenite_fraction": 0.925,
+    "target_ferrite_fraction": 0.075,
+    "target_ferrite_number_FN": 7.9
+  }
+}

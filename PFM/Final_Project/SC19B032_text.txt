@@ -1,0 +1,2491 @@
+Phase Field Modelling of Solidification Process
+A Report submitted
+in partial fulfilment for the Degree of
+Bachelor of Technology
+in
+Aerospace Engineering
+by
+
+SANAS VARAD RAVINDRA
+(SC19B032)
+pursued in
+Department of Aerospace Engineering
+Indian Institute of Space Science and Technology
+to
+
+INDIAN INSTITUTE OF SPACE SCIENCE AND TECHNOLOGY
+THIRUVANANTHAPURAM
+May 2023
+
+CERTIFICATE
+
+This is to certify that the thesis titled ’Phase-field Modelling of Solidification Process’, submitted by Sanas Varad Ravindra, to the Indian Institute of Space Science and Technology,
+Thiruvananthapuram, for the award of the degree of Bachelor of Technology in Aerospace
+Engineering, is a bonafide record of the research work done by him under my supervision.
+The contents of this thesis, in full or in parts, have not been submitted to any other Institute
+or University for the award of any degree or diploma.
+
+Dr. Chakravarthy P.
+Professor
+Department of Aerospace Engineering
+Indian Institute of Space Science
+and Technology
+
+Place: IIST, Thiruvanathapuram
+May 2023
+
+Dr. Girish B. S.
+Associate Professor
+Department of Aerospace Engineering
+Indian Institute of Space Science
+and Technology
+
+Dr. Aravind Vaidyanathan
+Head of the Department
+Department of Aerospace Engineering
+
+Declaration
+
+I declare that this thesis titled ’Phase-field Modelling of Solidification Process’ submitted
+in fulfillment of the Degree of Bachelor of Technology is a record of original work carried
+out by me under the supervision of Dr. Chakravarthy P. and Dr. Girish B. S. , and has not
+formed the basis for the award of any degree, diploma, associateship, fellowship or other
+titles in this or any other Institution or University of higher learning. In keeping with the
+ethical practice in reporting scientific information, due acknowledgments have been made
+wherever the findings of others have been cited
+
+Place: IIST, Thiruvanathapuram
+May 2023
+
+Sanas Varad Ravindra
+SC19B032
+
+Acknowledgements
+
+I am sincerely grateful to my project guide, Dr. Chakravarthy P, Professor, IIST, for considering me for this captivating project. His wisdom and experience were instrumental in
+overcoming the difficulties and challenges that arose during the work. I extend my heartfelt appreciation to my co-guide, Dr. Girish B.S.,Associate Professor,IIST for his timely
+suggestions and unwavering encouragement throughout the duration of this project.
+I would also like to express my gratitude to Dr. Gerald Tennyson,IIT Madras and Dr.
+Abhik Choudhary, Assistant Professor,IISC Bangalore, for their invaluable assistance in
+resolving my project-related queries. Their guidance has been pivotal in enhancing my
+understanding and progress.
+Additionally, I would like to thank God for His blessings and guidance throughout this
+journey. His divine presence has provided me with strength, inspiration, and clarity of mind.
+Lastly, I want to extend my deepest thanks to my parents, my sister, and my friends for
+their unwavering love, support, and encouragement. Their constant presence and belief in
+my abilities have been the driving force behind my success.
+
+Abstract
+
+Phase field modelling is a mathematical way for simulating microstructural evolution during
+phase transformations and has applications in simulating material processes like phase
+transformation, precipitate growth and crack propagation etc. The phase field modelling
+adopts diffused interface approach which does not requires tracking of the position of the
+interfaces during microstructure evolution and is implicitly expressed by the temporal and
+spatial evolution of phase field variables. Phase field modelling approach results in more
+accurate temporal evolution of microstructure as compared to traditional methods like Sharp
+Interface Method. Phase field modelling can simulate 2D as well as 3D simulations. In this
+work phase field method is used to study the dendritic crystal growth in pure melt as well as
+binary alloy. The modelling of dendrite growth is described using a set of partial differential
+equations which were solved using explicit Finite Difference Method and simple forward
+Euler time marching scheme.
+Phase field modelling of solidification of pure Ni was studied and results were compared
+with literature. For initial conditions along without undercooling a fine solid layer is added
+to the domain walls. It is seen that as the time passes, interface became unstable and grew
+uniformly into the domain. On the other hand, on applying no heat flux condition and
+introducing supercooling, selective branches were witnessed into the domain. Simulations
+were also performed for different seeding configurations. Along with this the effect of
+undercooling on the dendrite tip velocity and dendrite arm spacing was studied and results
+were compared with experimental data. The phase field approach was also applied to simulate
+the dendrite growth in a Al-Zn alloy.
+
+Table of contents
+List of figures
+
+xi
+
+List of tables
+
+xiii
+
+1
+
+Introduction
+1.1 Phase Field Modelling . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+1.2 Advantages of Phase Field Modelling . . . . . . . . . . . . . . . . . . . .
+1.3 Applications of Phase Field Modelling . . . . . . . . . . . . . . . . . . . .
+
+1
+1
+4
+5
+
+2
+
+Literature Review
+2.1 Solidification in metals . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+2.2 Dendritic Growth . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+2.3 Review on phase field models used for dendritic solidification . . . . . . .
+2.3.1 Solidification of a pure material . . . . . . . . . . . . . . . . . . .
+2.3.2 Solidification of binary alloys . . . . . . . . . . . . . . . . . . . .
+2.4 Mathematical methods used in phase field modelling . . . . . . . . . . . .
+
+7
+7
+11
+11
+12
+12
+13
+
+3
+
+Model Formulation
+3.1 Phase field model for single component system . . . . . . . . . . . . . . .
+3.2 Phase field model for Binary alloy system . . . . . . . . . . . . . . . . . .
+3.3 Non- dimensionalisation of phase field equations . . . . . . . . . . . . . .
+3.4 Determination of model parameters . . . . . . . . . . . . . . . . . . . . .
+3.5 Noise . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+17
+17
+18
+23
+24
+24
+
+4
+
+Numerical Implementation
+4.1 Solution method . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+4.1.1 Calculation of Gradients . . . . . . . . . . . . . . . . . . . . . . .
+4.1.2 Calculation of Laplacian . . . . . . . . . . . . . . . . . . . . . . .
+4.2 Seeding Configuration . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+25
+25
+25
+26
+27
+
+x
+
+Table of contents
+4.3
+4.4
+
+Program Details . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+Parallel Implementation (MPI) . . . . . . . . . . . . . . . . . . . . . . . .
+4.4.1 Domain Decomposition . . . . . . . . . . . . . . . . . . . . . . .
+4.4.2 Node Topology in Cartesian Coordinates . . . . . . . . . . . . . .
+4.4.3 MPI Communication . . . . . . . . . . . . . . . . . . . . . . . . .
+4.4.4 Issues faced during parallel implementation . . . . . . . . . . . . .
+
+29
+31
+31
+32
+33
+33
+
+5
+
+Results and Discussion
+5.1 Determination of model parameters . . . . . . . . . . . . . . . . . . . . .
+5.2 Determination of values of ∆t and ∆x . . . . . . . . . . . . . . . . . . . .
+5.3 Phase Field Simulation of pure Ni . . . . . . . . . . . . . . . . . . . . . .
+5.4 Phase field simulation of Al-Zn alloy . . . . . . . . . . . . . . . . . . . . .
+5.5 The effect of supercooling on dendrite growth . . . . . . . . . . . . . . . .
+5.5.1 Effect of superccoling on dendrite tip velocity . . . . . . . . . . . .
+5.5.2 Effect of superccoling on dendrite arm spacing . . . . . . . . . . .
+5.6 The effect of model parameters on the dendrite growth . . . . . . . . . . .
+5.6.1 Effect of latent heat on the dendrite growth . . . . . . . . . . . . .
+5.6.2 Effect of strength of anisotropy on dendrite growth . . . . . . . . .
+5.6.3 Effect of phase field mobility . . . . . . . . . . . . . . . . . . . . .
+
+35
+35
+36
+37
+44
+46
+47
+48
+51
+51
+57
+62
+
+6
+
+Conclusion
+
+65
+
+7
+
+References
+
+67
+
+List of figures
+1.1
+
+Representation of Phase field variable (Kobayashi et. al.1993)[16] . . . . .
+
+2
+
+1.2
+
+(a)Diffused interface (b)Sharp interface approach[1]
+
+. . . . . . . . . . . .
+
+4
+
+1.3
+
+Phase Field Simulation of Al-Mg dendrite[2] . . . . . . . . . . . . . . . .
+
+5
+
+1.4
+
+Precipitation of Cu in Fe-15%Cu-1% Mn- 1% Ni alloy at 823 K.[5] . . . .
+
+6
+
+1.5
+
+Microscale ductile fracture [3] . . . . . . . . . . . . . . . . . . . . . . . .
+
+6
+
+1.6
+
+Phase field modelling simulation of solid state sintering of two particles with
+750 mm radius[4] . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+6
+
+2.1
+
+Change in free energy ∆G during soldification process [5]
+
+. . . . . . . . .
+
+8
+
+2.2
+
+Development of columnar grain structure . . . . . . . . . . . . . . . . . .
+
+9
+
+2.3
+
+Concentration profule of solute in the liquid near the solid liquid interface.
+Figure (a) shows the distribution of solute concentration CL , and Figure (b)
+shows the corresponding equilibrium liquidus temperature TE v/s distance
+from interface profile [5] . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+10
+
+2.4
+
+Temperature gradient in the liquid and freezing temperature profile[5] . . .
+
+10
+
+2.5
+
+3D dendrite growth [5] . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+11
+
+3.1
+
+Functional form of g(φ ) . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+20
+
+3.2
+
+Functional form of p(φ ) . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+21
+
+4.1
+
+A 9-point stencil for Laplacian computations . . . . . . . . . . . . . . . . .
+
+26
+
+4.2
+
+The seed is place at the center of the domain . . . . . . . . . . . . . . . . .
+
+27
+
+4.3
+
+The seed is place at the centre of the edge of the domain . . . . . . . . . .
+
+28
+
+4.4
+
+The seed is place at the corner of the domain . . . . . . . . . . . . . . . . .
+
+28
+
+4.5
+
+A thin layer of solid is place on the walls of domain . . . . . . . . . . . . .
+
+29
+
+4.6
+
+Implementation on a CPU, A 1-D domain decomposition is used for 2-D
+arrays. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+32
+
+xii
+
+List of figures
+5.1
+
+Dendrite calculated with a 500 x 500 grid, where the initial seed placed at
+the corner. Solidification time was 3.5 ×10−7 seconds . . . . . . . . . . . . 38
+5.3 Solid-liquid interface (φ =0.5) and thermal front . . . . . . . . . . . . . . . 40
+5.2 Dendrite growth simulation where initial seed is place at the centre of the
+domain. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 41
+5.4 Percentage of solid Ni v/s time . . . . . . . . . . . . . . . . . . . . . . . . 42
+5.5 Multiple dendrite growth where domain size is 50 × 50 grid points . . . . 43
+5.6 Dendrite growth simulation Al-Zn alloy (a)dendrite growth (b) Composition
+field of Aluminium . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 45
+5.7 Dendrite growth simulation without supercooling . . . . . . . . . . . . . . 46
+5.8 Dendrite growth simulation with supercooling . . . . . . . . . . . . . . . 47
+5.9 Dendrite tip velocity v/s thermal supercooling (a) predicted from phase field
+model (b) experimental data[17] . . . . . . . . . . . . . . . . . . . . . . . 48
+5.10 Dendrite arm spacing for the different undercooling levels (a)∆T=150 K
+(b)∆T=200 K ,(c)∆T=250 K,(d)∆T=300 K . . . . . . . . . . . . . . . . . . 49
+5.11 Dendrite arm spacing v/s thermal supercooling . . . . . . . . . . . . . . . 50
+5.12 Growth of dendrite in the supercooled liquid where dimensionless latent heat
+K =0.8 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 53
+5.13 Growth of dendrite in the supercooled liquid where dimensionless latent heat
+is K =1.0 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 54
+5.14 Growth of dendrite in the supercooled liquid where dimensionless latent heat
+is K =1.2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 55
+5.15 Growth of dendrite in the supercooled liquid where dimensionless latent heat
+is K =2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 56
+5.16 Growth of dendrite in the supercooled liquid where strength of anisotropy δ
+= 0.00 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 58
+5.17 Growth of dendrite in the supercooled liquid where strength of anisotropy δ
+= 0.01 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 59
+5.18 Growth of dendrite in the supercooled liquid where strength of anisotropy δ
+= 0.02 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 60
+5.19 Growth of dendrite in the supercooled liquid where strength of anisotropy δ
+= 0.05 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 61
+5.20 Dendrite growth after dimensionless time t=0.4000 for the different values of τ 63
+
+List of tables
+4.1
+
+Cluster computing platform . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+29
+
+5.1
+5.2
+5.3
+5.4
+5.5
+
+Material properties of Ni (Kim et al., 1999) . . . . . . . . . . . . . . . . .
+Phase field parameters of Ni . . . . . . . . . . . . . . . . . . . . . . . . .
+Simulation parameters for dendrite growth of pure Ni undercooled melt . .
+Simulation parameters for dendrite growth in Al-Zn alloy . . . . . . . . . .
+Simulation parameters used in the phase field model for dendrite growth
+(Kobayashi et.al. 1993) . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+36
+36
+37
+44
+51
+
+Chapter 1
+Introduction
+The microstructure can be defined as spatial organization of various phases and potential
+flaws within a system, which exhibit distinct compositional and/or structural characteristics.
+The physical and mechanical properties of the material depends on the size, shape and
+orientations of the grains and domains. hence it is very important to gain an insight on the
+microstructure. evolution. The microstructure evolution involves large diversity of complex
+processes hence. it requires an extensive experimental and theoretical research to study the
+mechanism of microstructure evolution. Due to advancement in the technology with help of
+mathematics it is. now possible to predict and model the microstructure properties. Phase
+Field Modelling or Phase Field Method is a modern way for simulating complex processes
+in material science such as solidification ,precipitate growth and grain growth etc.
+
+1.1
+
+Phase Field Modelling
+
+Phase Field Modelling is mathematical way of simulating and analysing evolution of phase
+boundary and microstructure in materials. This technique is quite modern but nowadays it is
+widely used in material science and engineering field. In phase field modelling microstructure
+is expressed in terms of phase field variables which are continuous functions in space and
+time. The phase field modelling is based on the "diffused interface" approach. In diffused
+interface approach the interface between two domains is assumed to be of finite thickness. In
+this narrow region the values of phase field variables vary gradually between the values in
+the neighbouring domain.
+In phase field method different phases present in the system are described in terms of
+phase field variables. The values field variables are remained constant in the bulk phases, and
+smoothly varies across interfaces from one value to another. By taking a variational derivative
+
+2
+
+Introduction
+
+of free energy functional the governing equations for the phase-field and its coupling to
+relevant thermodynamic state variables such as temperature and composition are obtained.
+The phase-field method involves representing a system using one or more field variables
+(known as order parameters). The field variables have fixed values in their respective
+bulk phases and smoothly change between phases across interfaces with a characteristic
+thickness of ∆. By performing a variational derivative of the free energy functional, the
+governing equations for the phase-field can be obtained along with its coupling to relevant
+thermodynamic state variables such as temperature and composition.
+Phase field variables are continuous functions in time and spatial coordinates. Generally,
+phase field variables can be divided into two categories : 1) Conserved variables 2) Non
+conserved variables. Common Conserved variables are local concentration, composition
+etc. In the phase field simulation of solid sintering process density is used as a conserved
+phase field variable. Non conserved variables are fictious variables introduced in phase field
+modelling to define particular phase or crystal structure. For example, order parameter () is
+the order parameter used in grain growth simulation which represents individual grain. In
+the solidification non conserved variable called phase field variable (φ ) is used. In the solid
+phase φ takes value equal to one and in the liquid phase it takes value equal to one. Figure
+1.1 shows the representation of phase field variable. At the interface phase field φ varies
+gradually from zero to one.
+
+Fig. 1.1 Representation of Phase field variable (Kobayashi et. al.1993)[16]
+The temporal and spatial evolution of phase field variables is given by set of partial
+differential equations which describes the evolution of microstructure. These differential
+equations are derived based on the general thermodynamics and kinetics principles which
+includes different driving forces for microstructure evolution such as reduction in bulk
+
+3
+
+1.1 Phase Field Modelling
+
+energy, interfacial energy and elastic energy etc. However, these field equation does not
+explicitly deal with behaviour of individual atoms. Hence specific material properties have to
+introduced into the model through phenomenological parameters that are determined based
+on experimental and theoretical information.[1]
+The fundamental principles of phase field modelling rely on two kinetic equations:
+the Cahn-Hilliard nonlinear diffusion equation for the temporal evolution of conserved
+field variables(Equation 1.1) and the Allen-Cahn relaxation equation (Equation 1.2) for the
+evolution of non-conserved field variables.
+δF
+∂c
+= ∇Mc ∇
+∂t
+δ c(r,t)
+
+(1.1)
+
+∂η
+δF
+= −Mη
+∂t
+δ η(r,t)
+
+(1.2)
+
+The position and time are represented by r and t, respectively, while Mc denotes the
+diffusivity and c represent the conserved field variable. Additionally, η signify the nonconserved field variables with their respective mobility, Mη . The subscripts are utilized
+to differentiate the different chemical species and phases/domains. The free energy of the
+system is represented in terms of free energy functional F.
+
+Z
+1 2 2
+1 2 2
+F(φ , c, T ) =
+εφ ∇ φ + εc ∇ c + f (φ , c, T ) dv
+2
+V 2
+εφ and εc are gradient energy coefficient and f (φ , c, T ) is a homogeneous free energy
+density function.
+
+4
+
+Introduction
+
+1.2
+
+Advantages of Phase Field Modelling
+
+Phase field method is based on diffused interface approach. Prior to phase field modelling the
+problems related phase transformation were solved using sharp interface model proposed by
+Stephan in 1889. In this conventional modelling technique unlike diffused interface approach
+the interface between the domains was sharp.(Figure 1.2)
+
+Fig. 1.2 (a)Diffused interface (b)Sharp interface approach[1]
+
+In sharp interface model for each phase different differential equations needs to be solved,
+Along with that boundary condition flux conservation condition needs to be applied at the
+interface. For applying boundary conditions, it requires constant tracking of the interface
+which is computationally difficult. Phase field modelling overcomes this big disadvantage,
+because in phase field modelling there is no need to track the interface also set of differential
+equations are satisfied all over the domain irrespective of phases.
+There are several other advantages of using phase field modelling as a computational
+technique for simulating microstructures in materials, They are as follows:
+• Simulating complex microstructures: Phase field modelling can simulate the evolution
+of complex microstructures such as dendritic, eutectic, and peritectic structures, which
+are difficult to model using other techniques.
+• Multiscale modelling: Phase field modelling can be used to study microstructure evolution at different length and time scales, making it a powerful tool for understanding
+the fundamental mechanisms that control the behaviour of materials under different
+conditions.
+
+1.3 Applications of Phase Field Modelling
+
+5
+
+• Incorporating thermodynamics: Phase field modelling takes into account the thermodynamic properties of materials such as free energy and mobility of different phases,
+which is important for predicting the evolution of microstructures in materials.
+• 3D modelling: Phase field modelling can simulate microstructures in three dimensions,
+which is important for accurately predicting the behaviour of materials.
+• Cost-effective: Phase field modelling is cost-effective because it eliminates the need
+for expensive experiments and trial-and-error approaches in material design.
+
+1.3
+
+Applications of Phase Field Modelling
+
+Phase field modelling is mathematical representation of problems having various interfacial
+dynamics. The one of the main applications is modelling of solid-liquid phase transformation
+in various materials like alloys etc. Figure (1.3) shows phase field simulation of solidification
+of Al-Mg alloy.
+
+Fig. 1.3 Phase Field Simulation of Al-Mg dendrite[2]
+Phase field modelling is not only capable of modelling solidification process but also
+different phenomena in material science such as grain growth and precipitate growth. Figure
+1.4 shows the precipitation of Cu in Fe-15%Cu-1% Mn- 1% Ni alloy at 823 K. Initially
+Cu which has FCC structure which is coherent with Fe matrix. As the time passes Cu
+gets precipitates as BCC structure (red). Figure 1.5 shows the application of phase field
+modelling in the simulation of ductile fracture. The solid sintering process also can be
+modelled using phase field modelling(figure 1.6). Along with this phase field modelling
+have several industrial applications, such as analyzing viscous fingering , fracture dynamics,
+vesicle dynamics , tumor growth , the effect of a droplet impacting a solid surface, drop
+coalescence etc.
+
+6
+
+Introduction
+
+Fig. 1.4 Precipitation of Cu in Fe-15%Cu-1% Mn- 1% Ni alloy at 823 K.[5]
+
+Fig. 1.5 Microscale ductile fracture [3]
+
+Fig. 1.6 Phase field modelling simulation of solid state sintering of two particles with 750
+mm radius[4]
+
+Chapter 2
+Literature Review
+Phase field modelling is a tool in material science to analyse the temporal evolution of
+microstructure using a set of phase field variables which are continuous in space and time.
+This chapter deals with overview on the various phase field models are put forth in the context
+of dendritic solidification. The various phase field models for dendritic solidification of pure
+substance as well as binary alloys are reviewed.
+
+2.1
+
+Solidification in metals
+
+Nucleation
+Nucleation is fundamental process in the solidification of metals. The process of nucleation
+involves the formation of a small, stable cluster of atoms or molecules, which can then act as
+a seed for further crystal growth. The size and stability of these nuclei depend on a variety of
+factors, including the temperature and pressure of the system, the composition of the liquid
+or gas, and the presence of impurities or defects.
+Nucleation can be of two types i.e. homogenous and heterogeneous. Homogeneous
+nucleation is the occurred, during the general movement within the liquid, ordered groups of
+atoms forming small zones of higher than average density. The driving force for the growth
+of the nucleus is the reduction in the free energy. The free energy is composed of both
+volume free energy and interfacial free energies. For a spherical particle volume free energy
+can be given as:
+4
+∆G = − πr3 ∆Gv [5]
+3
+
+8
+
+Literature Review
+
+The radius of the particle is denoted by r and the bulk free energy change per unit volume
+is represented by ∆Gv . The interfacial free energy, which is proportional to the surface area
+of nuclei, can be expressed as:
+∆G = 4πr2 γ[5]
+For a spherical surface, γ represents the interfacial free energy per unit area. As depicted
+in Figure 2.1, the total free energy change is positive at very small values of r but becomes
+negative as r increases. The critical radius is the radius at which the peak positive value of
+∆G occurs. Beyond this radius, growth can occur with a decrease in free energy.
+
+Fig. 2.1 Change in free energy ∆G during soldification process [5]
+
+The critical radius serves as a barrier for nucleus formation. Although small nuclei are
+unstable, some of them become stable and grow when they reach the critical radius. Those
+that fail to reach it melt back into the liquid.
+Heterogeneous nucleation takes place when a foreign particle present in the melt or the
+wall of container provides the initial growth interface. This type of nucleation is also referred
+to as nucleation on the walls of the mold. In order for nucleation to take place, the foreign
+surface must be wetted by the metal, resulting in a low contact angle, and must possess some
+structural affinity with the crystalline solid.
+Homogeneous nucleation generally requires considerable undercooling. However, in
+practical settings, heterogeneous nucleation is preferred due to the presence of foreign
+particles or container walls. Consequently, solidification can occur with little undercooling.
+
+2.1 Solidification in metals
+
+9
+
+Growth
+The ultimate crystallographic structure of the solid is determined by the growth processes
+that occur after nucleation. The way in which individual grains and the mass of solid grow
+depends on the temperature and composition (in the case of alloy) present in the domain.
+In pure metal one can think , if the temperature is decrease uniformly, the liquid would
+undergo random nucleation. However, in practice, temperature gradients arise, resulting in
+nucleation starting at the cooler surface of the mould, and growth towards the centre of the
+casting (see Figure 2.2). As atoms deposit themselves onto the existing crystals’ lattice, a
+nearly flat interface moves forward. The growth occurs through the extension of close-packed
+atomic planes, resulting in a small irregular structure on the growth interface [5]. However,
+macroscopically, the interface is usually smooth and non-crystallographic in most metals.
+This series of events leads to the formation of the characteristic columnar structure.
+
+Fig. 2.2 Development of columnar grain structure
+
+The direction of heat extraction during solidification is opposite to that of growth, resulting
+in a positive thermal gradient at the solid-liquid interface. As the temperature of growth
+inside the casting progresses, the interface advances gradually. However, if the latent heat
+of crystallization is insufficient to reverse the direction of heat flow in the liquid near the
+interface, freezing occurs.
+For alloys, solute rejection at the interface leads to the formation of a concentration
+gradient on the liquid side of the interface, as depicted in Figure 2.3a. This concentration
+gradient causes corresponding variation in the freezing temperature, as shown in Figure 2.3b.
+There is unique freezing temperature (TE ) for each value of concentration. When the local
+
+10
+
+Literature Review
+
+temperature drops below will result in the crystallization. This shows that there is possibility
+that at some point in the domain away from the interface solidification may occur.
+
+Fig. 2.3 Concentration profule of solute in the liquid near the solid liquid interface. Figure
+(a) shows the distribution of solute concentration CL , and Figure (b) shows the corresponding
+equilibrium liquidus temperature TE v/s distance from interface profile [5]
+
+When comparing the curve of equilibrium freezing temperature with the temperature
+gradient in the liquid (Figure 2.4), it becomes apparent that there may be a significant
+temperature difference in some regions away from the interface before the overall temperature
+decreases enough to cause fresh deposition of solid at the interface. This suggests that there
+could be a region or band of liquid in the melt where conditions are more favorable for
+solidification than at the interface. This phenomenon is known as constitutional undercooling
+[5].
+
+Fig. 2.4 Temperature gradient in the liquid and freezing temperature profile[5]
+
+11
+
+2.2 Dendritic Growth
+
+2.2
+
+Dendritic Growth
+
+If the liquid adjacent to the solid-liquid interface experiences undercooling, any existing
+protrusion on the solid surface becomes stable and serves as a centre for selective growth.
+This leads to the formation of dendritic structures in the undercooled zone, where the
+advancement of the interface is impeded by either the solute barrier or latent heat. The
+preferred growth at the edge or corner of an existing crystal produces the primary axis of
+the dendrite. Additionally, the accumulation of solute or latent heat restricts the lateral
+expansion of the primary branch, giving rise to secondary and tertiary branches through the
+same mechanism as the primary stem. This process is illustrated in Figure 2.5.
+
+Fig. 2.5 3D dendrite growth [5]
+Dendrites are a significant feature in many material processing techniques, often observed
+in as-solidified alloys, castings, and fusion welds. Once the dendrites have started to grow,
+they reach a stable state where the tip grows at a constant velocity and radius. The final shape
+of the crystal is determined by several physical forces, including diffusive, capillary, and
+kinetic forces.
+
+2.3
+
+Review on phase field models used for dendritic solidification
+
+Solidification modelling techniques have a long history dating back to the 19th century.
+Stephan developed the sharp interface formulation in 1889 while studying ice formation
+in arctic regions. In his formulation he has expressed the diffusion process in solid and
+liquid phase and he took account the latent heat generation during solidification. and This
+formulation, which expresses the diffusion process in both the solid and liquid bulk and the
+generation of latent heat at the interface, remains the traditional mathematical model for
+
+12
+
+Literature Review
+
+solidification. The Gibbs-Thomson law also explains the variation in melting point caused by
+interface curvature. In this approach, the location of the interface must be explicitly tracked,
+and boundary conditions must be applied there.
+The diffuse interface approach can also be traced back to van der Waals’ early studies
+in 1893. However, this work was generally ignored until Rawlinson translated it in 1979[2].
+The phase-field equations were developed based on Cahn and Hilliard’s 1958 research on
+spinodal decomposition. Here, the order parameter was composition, and the diffusion
+equation was derived using a Ginzburg-Landau free energy functional. Allen and Cahn used
+a non-conserved order parameter to investigate antiphase boundary motion in the context of
+the order-disorder transition in 1979. Both the Allen-Cahn and Cahn-Hilliard equations are
+essential for the phase-field modelling of solidification processes.
+
+2.3.1
+
+Solidification of a pure material
+
+Based on Halperin’s work, Fix and Langer introduced the concept of using a continuous
+non-conserved order parameter to differentiate between two coexisting phases, This approach
+was further explored by several researchers and they proposed their own models for diffuse
+interfaces in the 1980s. In 1990, Penrose and Fife established a framework for deriving phasefield equations in a thermodynamically consistent manner from an entropy functional[7]. It
+was not until 1991 when Kobayashi presented the first dendrite images obtained using the
+Langer method, which marked the beginning of the flourishing of phase-field modelling of
+solidification. To ensure positive local entropy production, Penrose and Fife emphasized the
+necessity of postulating temperature and phase-field equations together. Wang later provided
+a thermodynamically consistent phase-field model that guarantees positive entropy production
+and is computationally tractable[8]. However, quantitative results using phenomenological
+approximations to define phase-field equations are not generally reliable, and it is crucial to
+consider interface width that is smaller than the capillary length for obtaining such results.
+In 1998, Karma and Rappel proposed the thin interface limit for phase-field models, which
+allowed for quantitative analysis of dendritic growth at low undercoolings by accommodating
+larger interface widths.
+
+2.3.2
+
+Solidification of binary alloys
+
+After Kobayashi successfully demonstrated dendrites for pure substances, phase field models
+for alloys began to develop. In 1993 Wheeler recast the model equations of Kobayashi to
+include solute atoms and solute diffusion and developed the WBM model for binary alloys.
+
+2.4 Mathematical methods used in phase field modelling
+
+13
+
+The WBM model used a free energy functional, treating the interface as a thin but of finite
+thickness region where field variables like composition vary smoothly.[10]
+Warren and Boettinger used the entropy functional to derive the phase field equations.
+Their model can be considered as extension to the WBM model. They were able to predict
+and show physically relevant dendritic patterns. Beckermann proposed the "two-phase"
+approach, treating the interface as a mixture of two phases with separate concentration fields.
+Kim introduced the KKS model with two separate concentration fields for each phase.[12]
+In 2001 Loginova coupled thermal diffusion equation with phase field equations to give a
+non-isothermal solidification model for binary alloys. He considered both solute and thermal
+diffusion and solved the equations using implicit finite element methods.[13] Almgren demonstrated anomalous effects when thermal conductivities were unequal, leading to Karma’s
+idea of the anti-trapping current. In 2001 Karma proposed ani trapping current formulation.
+This was extended by Kim in 2007 to give phase field modelling with antitrapping current
+formulation for the multicomponent systems.[14-15] Tönhardt and Amberg treated solid and
+liquid phases as Newtonian fluids, while Beckermann introduced melt convection into the
+phase-field model. Anderson derived a phase-field model of a pure substance with convection
+and analysed the sharp interface limit. However, introducing convection into the melt is
+challenging due to the various time and length scales involved and the need for complex
+computational methods and adaptive grids.[2]
+
+2.4
+
+Mathematical methods used in phase field modelling
+
+In phase field modelling the main governing equations are non linear partial differential
+equations. Implicit and explicit methods are two common approaches for numerically solving
+partial differential equations (PDEs). The key difference between the two methods is in how
+they handle the time-dependent terms in the PDEs.
+In an explicit method, the time derivative term is approximated using a finite difference
+formula that only involves the values of the solution at the current time step. This means that
+the solution at the next time step can be computed explicitly as a function of the current time
+step. Explicit methods are relatively easy to implement and can be computationally efficient,
+but they require that the time step be small enough to ensure numerical stability. In general,
+explicit methods are used for problems with smooth solutions and short simulation times.
+In contrast, in an implicit method, the time derivative term is approximated using a finite
+difference formula that involves the values of the solution at both the current and next time
+steps. This leads to a system of nonlinear algebraic equations that must be solved at each
+time step. Implicit methods are more computationally expensive than explicit methods, but
+
+14
+
+Literature Review
+
+they are also more stable and can handle larger time steps. Implicit methods are typically
+used for problems with stiff solutions, long simulation times, or nonlinear behaviour.
+In phase field modelling the numerical techniques are used in the time and spatial
+discretization of PDEs. The spatial discretization of PDEs is done using following three
+methods.
+1. Finite difference method
+This is a numerical method that approximates derivatives using the differences between
+function values at discrete points. The method is simple to implement, but it can be
+computationally expensive when dealing with large systems.
+2. Finite element method
+Finite element method is similar to the finite difference method. In this method solution
+of PDSs is approximated using a mesh of small elements. The method can be used to
+solve complex geometries and is more computationally efficient than finite difference
+methods for large systems.
+3. Fourier spectral method
+Fourier spectral method is a numerical method that represents the solution of PDEs as
+a sum of Fourier series. The method is highly accurate and can be computationally
+efficient for smooth functions, but it can be less accurate for functions with discontinuities.
+4. Phase field crystal method
+
+The Phase-field crystal (PFC) method is a multiscale simulation technique that connects
+classical molecular dynamics (MD) simulations with phase-field methods discussed
+above. It was developed by Elder. The Phase field crystal method uses an order
+parameter that defines the local-time-averaged atomic number density, allowing for the
+production of crystal lattice periodicity. Any perturbations or lattice defects increase the
+free energy, thereby providing information that was previously only accessible through
+atomistic simulations. Phase field crystal method can simulate various atomistic events
+in larger spatial and temporal dimensions. The PFC has many advantages over current
+molecular dynamics simulation techniques hence it has become a popular simulation
+approach.[5]
+Let us consider a PDE defined as follows.
+
+2.4 Mathematical methods used in phase field modelling
+
+15
+
+∂u
+= f (u,t)
+∂t
+where u is regarded as function of length x and time t, The temporal discretization of
+these types PDEs is done by following methods. here un , f n represents the value of u and
+f(u,t) at nth iteration.
+1. Simple forward Euler method
+un+1 − un
+= f (u,t)
+∆t
+un+1 = un + ∆t f n
+2. Backward Euler method
+un+1 = un + ∆t f n+1
+3. Crank-Nikolson method
+
+1
+un+1 = un + ∆t f n+1 + f n
+2
+4. Adams Moulton method
+un+1 = un +
+
+
+1  n+1
+∆t 5 f
++ 8 f n − f n−1
+12
+
+5. Runge Kutta method
+k1 = f (un ,t n )
+
+
+1
+1
+n
+n
+k2 = f u + ∆tk1 ,t + ∆t
+2
+2
+
+
+1
+1
+n
+n
+k3 = f u + ∆tk2 ,t + ∆t
+2
+2
+k4 = f (un + ∆tk3 ,t n + ∆t)
+1
+un+1 = un + ∆t [k1 + 2k2 + 2k3 + k4 ]
+6
+
+Chapter 3
+Model Formulation
+3.1
+
+Phase field model for single component system
+
+Phase field equations for the solidification of pure substance are derived as follows. Based
+on the work of Kobayashi the model a non-conserved phase-field parameter, φ , is used to
+determine the phase at a point at particular time.φ will take the value of 1 in the solid phase
+and 0 in the liquid phase. The phase field variable φ will be coupled with other variable i.e.
+the temperature field (T). The driving force for the solidification process is reduction in free
+energy. Hence the Ginzburg– Landau type free energy functional is given as:
+1 2
+ε |∇φ |2 + f (φ , m)dv
+2
+V
+
+Z
+
+F(φ , m) =
+
+ε is a parameter which determines the thickness of interface layer and is also called as
+gradient energy coefficient which determines. The free energy density function f (ϕ, m) can
+be given as :
+
+
+
+
+1 1
+1 1
+1 4
+3
+− m φ +
+− m φ2
+(3.1)
+f (φ , m) = φ −
+4
+2 3
+4 2
+m is the factor which connects the temperature to the interface motion. The value of the
+m depends on the amount of supercooling and temperature. It’s dependence on temperature
+is given as:
+m(T ) =
+
+α 
+
+
+
+tan−1 γ Teq − T
+
+π
+The interfacial anisotropy is introduced by assuming ε depends on the outer normal
+vector at the interface. It can be given as
+ε = ε0 (1 + δ cos j(θ − θ0 ))
+
+(3.2)
+
+18
+
+Model Formulation
+
+δ is a strength of anisotropy. value of j is 4 for four fold symmetry and 6 for six fold
+symmetry. θ0 is the initial offset angle and taken as a constant. The angle, θ , is defined as
+local normal to the interface:
+−1
+
+θ = tan
+
+
+
+∂ φ /∂ y
+∂ φ /∂ x
+
+
+
+Temporal evolution of phase field parameter φ is given using Allen Cahn equation.
+∂φ
+δF
+= −M
+∂t
+δφ
+M is phase field mobility. On taking functional derivative of equation 3.1 we get;
+
+
+
+
+
+
+
+
+∂φ
+∂
+∂ε ∂φ
+∂
+∂ε ∂φ
+1
+2
+τ
+=
+ε
+−
+ε
++ ∇ · ε ∇φ + φ (1 − φ ) φ − + m
+(3.3)
+∂t
+∂y
+∂θ ∂x
+∂x
+∂θ ∂y
+2
+The temporal evolution of temperature field is given by thermal diffusion equation.
+L ∂φ
+∂T
+= D∇2 T +
+∂t
+ρC p ∂t
+
+(3.4)
+
+Where D is thermal diffusivity,
+ρ is density
+C p is heat capacity
+L is latent heat.
+First term on the right hand side is the heat flux and second term represents the latent heat
+generation.
+The dimensional less form of the above equation can be given as:
+∂T
+∂φ
+= ∇2 T + k
+∂t
+∂t
+
+(3.5)
+
+where k denotes the dimensionless latent heat generation.
+
+3.2
+
+Phase field model for Binary alloy system
+
+The following formulation of phase-field model is based on an entropy formulation by Wang
+et. al. for a pure material and phase field model by Wheeler, Boettinger, and McFadden
+(WBM) for a binary alloy. We define entropy functional as:
+
+19
+
+3.2 Phase field model for Binary alloy system
+
+
+ε2
+2
+s(φ , e, c) − |∇φ | ddv
+2
+
+Z 
+
+S=
+
+(3.6)
+
+Where s is the thermodynamic entropy density and e is the internal energy and c is the
+concentration of solute B in solvent A. By the law of conservation of energy density and
+concentration conservative fluxes can be given as,
+de
+= −∇ · Je
+dt
+
+(3.7)
+
+dc
+= −∇ · Jc
+dt
+
+(3.8)
+
+The diffusional fluxes Je and Jc are given by linear laws of irreversible thermodynamics,
+Je = Me ∇
+
+δS
+δe
+
+(3.9)
+
+Jc = Mc ∇
+
+δS
+δc
+
+(3.10)
+
+The variational derivatives in above equations will be given as
+µB − µA
+δS ∂s
+=
+=−
+δc ∂c
+T
+δS ∂s
+1
+=
+=
+δe ∂e T
+µA and µB are chemical potentials of components A and B.
+Chemical potentials depends on the phase field, concentration and temperature and are
+written as,
+µ A = f A (φ , T ) + Ω(φ )c2 +
+
+RT
+ln(1 − c)
+vm
+
+(3.11)
+
+RT
+ln c
+vm
+
+(3.12)
+
+and
+µ B = f B (φ , T ) + Ω(φ )(1 − c)2 +
+
+Here f A (φ , T ) and f B (φ , T ) are the homogeneous free energy density functions. They
+have minima at φ =0 and φ =1. Ω is a thermodynamic constant associated with the enthalpy
+of mixing, R is the gas constant, and Vm is the molar volume. Here it is assumed that Ω =0
+so that solution will be ideal.
+
+20
+
+Model Formulation
+The expressions for f A (φ , T ) and f B (φ , T ) will be given by basic thermodynamic relation
+
+as,
+
+f A = e A − T sA = e A + T
+
+∂ fA
+∂T
+
+The internal energy for pure material A eA is as,
+
+
+
+eA = eAS + p(φ ) eAL − eAS
+where eAS and eAL are the solid and liquid internal energies of pure A. The function p(φ ) is
+chosen such that it should have value 0 in the solid and 1 in the liquid.(figure 3.2) Here it is
+chosen to have the form (after Wang et al. [23])
+Rφ
+
+p(φ ) = R01
+
+g(φ )dφ
+
+0 g(φ )dφ
+
+= φ 3 10 − 15φ + 6φ 2
+
+
+
+where we have taken
+g(φ ) = φ 2 (1 − φ )2
+
+g(φ ) is double-well potential function which has minima at φ =0 and 1. (figure 3.1).
+
+Fig. 3.1 Functional form of g(φ )
+
+21
+
+3.2 Phase field model for Binary alloy system
+
+Fig. 3.2 Functional form of p(φ )
+
+Internal energies for pure and single phase material at a particular temperature can be
+expressed by assuming constant heat capacity as,
+ 
+
+
+eAS (T ) = eAS TmA +CSA T − TmA ,
+ 
+
+
+eAL (T ) = eAL TmA +CLA T − TmA
+where TmA is the melting point of the pure material, and CSA and CLA are the heat capacities of
+the solid and liquid. Here the capacity in solid and liquid phase can be assumed to be same
+and equal to CA .
+The latent heat heat oh fusion per unit volune ∆HA can be defined as,
+
+
+∆H A = eAL − eAS TmA
+Combining above equations free energy density functions ( f A ) and ( f B ) are given as,
+
+A
+
+
+h
+i
+T
+T
+A A
+A A
+A
+1 − A −CA T ln A +W A g(φ )T
+f (φ , T ) = eS Tm −C Tm + p(φ )∆H
+Tm
+Tm
+
+(3.13)
+
+
+
+ B B
+
+T
+T
+B B
+B
+f (φ , T ) = eS Tm −C Tm + p(φ )∆H
+1 − B −CB T ln B +W B g(φ )T
+Tm
+Tm
+
+(3.14)
+
+B
+
+Based on the equations 3.11,3.12,3.13,3.14 Helmholtz free energy density function (f) will
+be given as,
+f = (1 − c)µA + cµB
+
+(3.15)
+
+22
+
+Model Formulation
+The evolution of phase field variable φ will be given as,
+∂φ
+δS
+= −Mφ
+= −Mφ
+∂t
+δφ
+
+
+
+∂s
+− εφ2 ∇2 φ
+∂φ
+
+
+
+Mφ is phase field mobility. and,
+1∂f
+∂s
+=−
+∂φ
+T ∂φ
+By taking variational derivative of equation 3.15 we get,
+
+
+
+
+
+ ∂
+∂ε ∂φ
+∂
+∂ε ∂φ
+1 ∂φ
+2
+= ∇ · ε ∇φ +
+ε
+−
+ε
+− (1 − c) H A − cH B
+Mφ ∂t
+∂y
+∂θ ∂x
+∂x
+∂θ ∂y
+
+(3.16)
+
+Where H A and H B are given as,
+
+
+1 ∂ fA
+1
+A
+′
+A 1
+H (T, φ ) =
+= W g(φ ) + 30g(φ )L
+−
+T ∂φ
+T TmA
+A
+
+
+
+1
+1 ∂ fB
+B
+′
+B 1
+= W g(φ ) + 30g(φ )L
+−
+H (T, φ ) =
+T ∂φ
+T TmB
+B
+
+Mφ is dependent on the composition and is given as
+Mφ = M A (1 − c) + M B c
+From equation 3.9 and 3.10 the temporal evolution of the concentration is derived as
+follows.
+
+
+ 
+R ∇c
+∂c
+B
+A
+= ∇ · Mc
++ H − H ∇φ .
+∂t
+vm c(1 − c)
+In the same manner that we let Mφ depend upon c we shall let Mc depend upon φ and we
+get,
+vm
+c(1 − c) [DS − p(φ ) (DL − DS )]
+R
+where DS and DL are the diffusivity in the solid and liquid.
+Mc =
+
+h
+
+ i
+∂c
+vm
+B
+A
+= ∇ · Dc ∇c + c(1 − c) H − H ∇φ
+∂t
+R
+Where,
+
+(3.17)
+
+3.3 Non- dimensionalisation of phase field equations
+
+23
+
+Dc = Ds + (DL − Ds )p(φ )
+
+3.3
+
+Non- dimensionalisation of phase field equations
+
+The governing equation needs to be non dimensionalised for better numerical convenience
+and to increase computational efficiency. For non dimensionalisation three different scales
+are used i.e. time, length and energy. The length ,time and temperature are expressed in
+terms of characteristics length, time and temperature.
+The length is scaled on capillary length and denoted as,
+x = x∗ d0
+where d0 is a capillary length.
+The time is scaled on diffusive time and denoted as,
+
+t=
+
+d02 ∗
+t
+DL
+
+Temperature is scaled upon characteristics temperature (Tch ) and expressed as,
+T = Tch T ∗
+And energy is scaled as,
+f=
+
+vm ∗
+f
+RTch
+
+HA =
+
+vm A∗
+H
+RTch
+
+So,
+
+.
+So governing equation 3.17 can be expressed interms of x∗ ,t ∗ , T ∗ as follows.
+ ∗
+
+
+∗ 
+∇∗
+∇
+vm
+B∗
+A∗ RTch ∇
+ 2 =
+· Dc
+c + c(1 − c) H − H
+φ
+d
+d0
+d0
+R
+vm d0
+∂ 0 t∗
+∂c
+DL
+
+(3.18)
+
+24
+
+Model Formulation
+
+3.4
+
+Determination of model parameters
+
+The model parameters used in phase field modelling such as Mφ , w,ε are obtained in terms of
+measurable quantities such as surface energy(σ ) , interface width(δ ) and kinetic coefficent
+(µ) etc,
+For a pure material the expression for these parameters is given as,
+Tm µ
+Mφ = p
+6 (2)Lδ
+3σ
+W=√
+2δ
+√
+ε = 6 2σ δ
+
+3.5
+
+Noise
+
+An incorporation of stochastic noise is necessary to induce fluctuations at the interface. These
+fluctuations, upon being amplified, are responsible for much of the structure observed in real
+systems. Noise is included as follows.
+1 ∂φ
+1 ∂φ
+=
+− αr(16g(φ ))((1 − c)H A + cH B )
+Mφ ∂t
+Mφ ∂t
+
+(3.19)
+
+r is the random number between +1 and -1. α represents the amplitude of the noise.
+.
+
+Chapter 4
+Numerical Implementation
+In this chapter the numerical and programming methods employed to solve phase-field
+equations are discussed. This chapter delves into issues faced regarding running the code on
+hardware platform, CPUs, and discusses the programming tactics employed to tackle these
+challenges.
+
+4.1
+
+Solution method
+
+To discretize the governing partial differential equations, an explicit finite difference method
+was utilized. Specifically, a time discretization was achieved through an explicit Euler
+scheme. Although implicit approaches can remove the constraint on the time interval, they
+often pose difficulties for parallelization. On the contrary, explicit schemes only necessitate
+previous time step values to compute the current one, leading to simpler algorithms. On
+using explicit schemes the algorithms can be used on CPU’s and GPU’s.
+
+4.1.1
+
+Calculation of Gradients
+
+Gradients such as ∂∂φx , ∂∂φy etc. are discretized using a first order central difference in space
+(equation 4.1,4.2).
+φi+1, j − φi−1, j
+∂φ
+=
+∂x
+2∆x
+
+(4.1)
+
+φi, j+1 − φi, j−1
+∂φ
+=
+∂y
+2∆y
+
+(4.2)
+
+26
+
+4.1.2
+
+Numerical Implementation
+
+Calculation of Laplacian
+
+The Laplacian of 2D arrays like ∇2 φ and ∇2 T are obtained using a 9-point stencil method.
+Figure 4.1 shows that to calculate Laplacian at point (i,j) the surrounding 8 points are taken
+account to form a 9-point stencil. The use of 9-point stencil reduces the error in discretizing
+Laplacian up to o(h4 ). The equation 4.3 shows the Laplacian of temperature field at point
+(i,j).
+To evaluate gradients and Laplacians at each grid point, a stencil-based solver is more
+beneficial to use instead of matrix-based methods like TDMA and ADI, which require the
+entire array as input[2]. For calculating Laplacian and gradients at each node point in the
+domain, a stencil is created, with a 9-point stencil being used for 2-D (as shown in Figure
+4.1). The stencil-based solver can be used on CPUs and GPUs. Even though CPUs execute
+programs sequentially and GPUs execute them concurrently, the stencil-based calculation is
+most effective in both cases.
+
+Fig. 4.1 A 9-point stencil for Laplacian computations
+
+∇2 T =
+
+
+1 
+T
++
+T
++
+T
++
+T
+i−1,
+j+1
+i+1,
+j+1
+i+1,
+j−1
+i−1,
+j−1
+6∆x2
+
+
++4 Ti−1, j + Ti+1, j + Ti, j+1 + Ti, j−1 − 20Ti, j
+
+(4.3)
+
+Before numerical integration at the start of each time step the values of Laplacian and
+gradients at all grid points are calculated using formulas shown in equation 4.1,4.2 and 4.3.
+All the gradients and Laplacians at any point (i,j) are dependent on values at surrounding
+points.
+
+4.2 Seeding Configuration
+
+4.2
+
+27
+
+Seeding Configuration
+
+In phase-field simulations, microstructure evolution is driven by minimizing a free energy
+functional. However, nucleation process requires the increase in free energy hence in phase
+field modelling nucleation cannot be simulated along with dendrite growth. As the primary
+focus of this study is to analyse dendrite growth during solidification, nucleation has not been
+included in the phase-field formulation. Instead, nucleation events have been incorporated as
+part of the initial conditions of the domain by manually introducing seed nuclei. Specifically,
+the seed value of φ is set to one to represent solid, and zero elsewhere to represent liquid.
+The effect of different seeding configurations on dendrite growth has been investigated by
+employing various configurations, as shown in Fig. 4.2-4.5 for the 2-D case, where the red
+region indicates solid, and the blue region indicates liquid.
+
+Fig. 4.2 The seed is place at the center of the domain
+
+28
+
+Numerical Implementation
+
+Fig. 4.3 The seed is place at the centre of the edge of the domain
+
+Fig. 4.4 The seed is place at the corner of the domain
+
+4.3 Program Details
+
+29
+
+Fig. 4.5 A thin layer of solid is place on the walls of domain
+
+4.3
+
+Program Details
+
+Programs for the phase field modelling of dendritic solidification were written in C and
+MATLAB. For executing programs CPU cluster available in institute was utilised. The cluster
+details are given table 4.1.
+System
+IBM x iDataPlex dx360 M4
+Chip architecture
+Intel Xeon E5-2690 V4
+Type
+superscalar, out of order
+Clock
+2.9GHz
+Sockets per node
+2
+Cores per socket
+20
+Compute nodes
+50
+Threads per socket
+40
+DRAM capacity per node 256 GB
+DRAM pin bandwidth
+3200 MT/s
+Table 4.1 Cluster computing platform
+
+CPU computing platform was chosen for the executing the code.The general algorithm is
+given below.
+
+30
+
+Numerical Implementation
+
+CPU implementation: Main program
+Input: Model parameters, Material properties, Domain size (Nx and Ny)
+Initialize the phase field variables : φ , concentration (c) and Temperature (T).
+Set the values of phase field variables φ ,c,T according to required seeding configuration.
+MPI initialization
+Domain Decomposition
+For each time step t do this :
+For each element (i,j) do this:
+dε
+Calculate ∇2 T , ∇2 φ , ∂∂φx , ∂∂φy , ε, dθ
+at each grid point (i,j) by using equations
+3.2,4.1,4.2 and 4.3.
+end
+For each element (i,j) do this :
+Apply boundary conditions on the walls of the domain.
+if t> ntimesteps
+Add thermal noise according to equation 3.19 for secondary branching.
+end
+Calculate new φ (i, j) ,c(i,j) and T(i,j) from equations 3.16, 3.17 and 3.4.
+Update the old φ (i, j) ,c(i,j) and T(i,j) with new φ (i, j) ,c(i,j) and T(i,j).
+end.
+end.
+
+4.4 Parallel Implementation (MPI)
+
+4.4
+
+31
+
+Parallel Implementation (MPI)
+
+The written codes comprised of a large number of iterations and for loops, leading to
+significant run time. To address this issue and achieve faster results, parallel computing
+was employed. Parallel computing refers to the execution of large tasks simultaneously by
+dividing them into smaller subtasks that can be executed concurrently on multiple processors.
+The aim of parallel computing is to achieve high computational performance, increase speed,
+and solve large and complex problems that would be impractical or impossible to solve on a
+single processor or computer.
+Parallel computing can be achieved using various techniques, such as shared-memory
+parallelism, distributed-memory parallelism, hybrid parallelism, and graphics processing unit
+(GPU) computing. In the study OpenMP and MPI were used for parallel implementation
+on CPUs. OpenMP is an Application Programming Interface that supports multi-platform
+shared memory multiprocessing programming. It allows a programmer to parallelize a
+program by dividing the computation among multiple threads that run on a shared-memory
+system. On the other hand, MPI i.e., message passing interface comes under distributed
+memory model. MPI is a standard protocol used for inter-process communication in parallel
+computing. It provides a set of functions and routines that enable communication between
+multiple processes running in parallel on separate computing nodes.
+
+4.4.1
+
+Domain Decomposition
+
+Before each time integration using Euler method the gradients and Laplacian needs to be
+calculated at each grid point of the domain. This takes a lot of time. For example, if we are
+taking 300 × 300 grid, then we have to compute data 300 × 300 = 90000 times !. Hence
+this computation can be distributed over several CPUs running in parallel. For this domain
+decomposition was done as shown in Figure 4.6.
+
+32
+
+Numerical Implementation
+
+Fig. 4.6 Implementation on a CPU, A 1-D domain decomposition is used for 2-D arrays.
+To optimize the performance of the program, the domain needs to be decomposed in a
+way that aligns with the way the c compiler scans the array. Hence instead of decomposing
+array row wise it was decomposed column wise. To simplify the process of assigning
+processors to different parts of the domain, it is preferable to let the MPI routines to handle
+the distribution. MPI provides efficient management of virtual topologies, making it easy
+and efficient to distribute work to processors. Ghost cells which are additional cells that
+were added to the left and right of a column-wise domain decomposition of an array. These
+additional cells are not part of the original array but are used to help with computations
+involving the boundary conditions of the array. Ghost cells were exchanged between the
+processors using (mpi_isend) and (mpi_recv) routines.
+
+4.4.2
+
+Node Topology in Cartesian Coordinates
+
+To avoid the cumbersome task of explicitly assigning processors to host different parts of the
+domain, a virtual topology can be created based on which the global domain is decomposed
+
+4.4 Parallel Implementation (MPI)
+
+33
+
+and distributed among the processors. In this study, the domain was split along columns,
+as depicted in Figure 4.6, and each processor was named according to its position as "me",
+while its adjacent processors to the left and right were named "left" and "right", respectively.
+The MPI routine (mpi_cart_create) was utilized to decompose the domain.
+
+4.4.3
+
+MPI Communication
+
+The algorithms implemented in this study assigned one processor as the master node and the
+rest as slaves. While the gradients and Laplacian were computed on all processors, the time
+integration was performed on the master node alone. Thus, it was necessary to transfer data
+such as matrices, including φ and temperature, from the master node to the slaves and back,
+respectively. This was accomplished using MPI routines such as mpi_send and mpi_recv.
+
+4.4.4
+
+Issues faced during parallel implementation
+
+The C codes prepared for the phase field simulation of binary alloys were implemented on
+CPU cluster. For parallel implementation earlier OpenMP was used. But the runtime for the
+code was still very high. Later MPICH which is an implementation of the Message Passing
+Interface (MPI) was used for writing the parallel codes. The run time for the codes was
+coming higher than 2 days due to extra time taken in sending data between processors. At
+last Hybrid parallelism was chosen for parallel implementation. Hybrid parallelism refers to
+the use of both shared-memory parallelism and distributed-memory parallelism in the same
+program or application. In other words, it combines the benefits of parallel programming on
+shared-memory systems with those of parallel programming on distributed-memory systems.
+So codes were prepared by choosing hybrid approach i.e. combining MPICH and OpenMP
+routines. The issue about run time was still occurring because number of loops were large
+and limit on cluster was of two days only. Hence it is important to write code such way that
+it is optimized for the parallel implementation.
+
+Chapter 5
+Results and Discussion
+In this chapter simulation results are discussed for the single component and binary systems.
+The simulations are based on the models presented in chapter 3. As mentioned in the chapter
+4 explicit finite difference method is used for discretisation and simple Euler time marching
+scheme is used for solving the partial differential equations. Before discussing the results
+phase field parameters such as phase field mobility (Mφ ) , energy barrier height (W) , gradient
+energy coefficient are determined as follows.
+
+5.1
+
+Determination of model parameters
+
+The phase field model parameters like W and gradient energy coefficient ε are depends on the
+choice of interface width d and physical properties of the material. The phase field parameters
+are expressed in terms of physical parameters which can be measured experimentally. The
+interface thickness is chosen to reduce the computational time but also give stable numerical
+solution. For pure metal Nickel the required data is taken from (table 5.1), and based on the
+expressions presented in the chapter 3 phase field parameters Mφ ,W and ε are given in table
+5.2.
+
+36
+
+Results and Discussion
+Table 5.1 Material properties of Ni (Kim et al., 1999)
+Parameters
+Melting Temperature, Tm
+Surface Energy, σ
+Interface width, d
+Heat Capacity, C p
+Linear Kinetic Coefficient, µ
+Latent Heat, L
+
+Value
+1728 K
+0.37 J/m2
+1.6 ×10−7 m
+5.42 ×106 J/m3 K
+2 m/s/K
+2.35 ×109 J/m3
+
+Table 5.2 Phase field parameters of Ni
+Parameters
+Phase Field Mobility, Mφ
+Free energy barrier, w
+Gradient energy Coefficient, ε0
+
+5.2
+
+Value
+13.47 m3 /sec/J
+0.61 ×108 J/m3
+2.01 ×10−4 (J/m)1/2
+
+Determination of values of ∆t and ∆x
+
+As we are using finite difference method for phase field simulation we have to select the
+values of time step ∆t and spatial resolution ∆x. We can not select these values because there
+is restriction on the ∆t for numerical stability. The restriction on the time step is dependent
+on the spatial resolution and is given as,
+∆t <
+
+∆x2
+5DL
+
+where DL is diffusivity of solute in liquid phase. If we are considering single component
+system DL is replace by thermal diffusivity and it is given as,
+∆t <
+
+∆x2
+5D
+
+so if we select ∆x to be equal to 10−8 m then for Ni (D=1.55 ×105 m2 /s) time step is
+given as,
+∆t <
+For
+
+∆x2
+< 1.29 × 10−12
+5D
+
+37
+
+5.3 Phase Field Simulation of pure Ni
+
+5.3
+
+Phase Field Simulation of pure Ni
+
+The first numerical simulation in this study was done for to study the dendritic growth in
+pure material. Figure 5.1 shows calculated dendrite from the seed place at the corner of the
+computational domain. The domain parameters are expressed in table 5.3.
+The phase field model proposed by the Kim for the solidification of pure undercooled
+melt is referred for the simulation of dendrite growth in Nickel. The evolution of phase field
+is given by removing concentration term from equation 3.16( i.e. c=0),
+
+
+
+
+
+
+
+ ∂
+1
+1 ∂φ
+∂ε ∂φ
+∂
+∂ε ∂φ
+1
+2
+′
+= ∇ · ε ∇φ +
+−
+ε
+−
+ε
+−W g (φ ) − 30g(φ )L
+Mφ ∂t
+∂y
+∂θ ∂x
+∂x
+∂θ ∂y
+T TmA
+(5.1)
+
+W is free energy barrier height, g(φ ) = φ 2 (1 − φ )2 is the double well function and L is
+the latent heat of fusion of pure nickel. T is the temperature of the domain and TmA melting
+temperature of nickel.
+The evolution of temperature field is given by equation 3.4. The simulation parameters
+are given in table 5.1,5.2 and 5.3. The spatial resolution is chosen such that the time step
+will satisfy the convergence criteria and also run time will be lesser. Initially the whole
+melt is undercooled by 260 K from the melting temperature (i.e. 1728 K). The Newman’s
+boundary conditions were applied at the boundaries of the domain. The figure 5.1 shows the
+dendrite growth after 3.5 × 10−7 seconds. The red coloured part is solid nickel and blue
+coloured part is the liquid state. From the figure 5.1 along with primary branching secondary
+branching is also seen. The introduction of thermal fluctuation by adding noise has caused the
+asymmetrical branching which is closer to the real dendrite structure. It is seen that primary
+branch is growing in diagonal direction, because the value of θ0 in anisotropic relation (eq.
+3.2) was kept 450 .
+Table 5.3 Simulation parameters for dendrite growth of pure Ni undercooled melt
+Grid Parameters
+Spatial Resolution, ∆x
+Time step, ∆t
+Domain size, Nx ×Ny
+
+2 ×10−8 m
+1 ×10−12 seconds
+500 ×500
+
+38
+
+Results and Discussion
+
+Fig. 5.1 Dendrite calculated with a 500 x 500 grid, where the initial seed placed at the corner.
+Solidification time was 3.5 ×10−7 seconds
+
+5.3 Phase Field Simulation of pure Ni
+
+39
+
+The seed is place at the centre of the domain and dendrite growth with 4 fold symmetry
+is calculated (figure 5.2a). Along with that temperature field is also showed in the figure
+5.2b. The one thing that can be noticed from the 5.3 is that the thermal front is always
+ahead of solidification interface. The driving force for the interface motion is the temperature
+gradient at the interface. Hence it is important that temperature front always should be ahead
+of the phase field front or solid-liquid interface for the growth of the dendrite. From the
+mathematical point of view, the transient solution of phase field equation is controlled by
+the product of Mφ .ε 2 . For the stable solution of phase field equation using finite difference
+method the thermal diffusivity should be greater than the product of Mφ .ε 2 . The value of
+Mφ and ε depends on the interface width, so interface width is chosen such that Mφ .ε 2 will
+be lesser than the thermal diffusivity for numerically stable solution. Hence as the thermal
+diffusivity has higher value the thermal front will be ahead of the solid liquid interface.
+
+40
+
+Results and Discussion
+
+Fig. 5.3 Solid-liquid interface (φ =0.5) and thermal front
+
+5.3 Phase Field Simulation of pure Ni
+
+41
+
+(a) Dendrite growth
+
+(b) Non dimaensional temperature field
+
+Fig. 5.2 Dendrite growth simulation where initial seed is place at the centre of the domain.
+
+42
+
+Results and Discussion
+
+The phase field model was used to find out the time taken for complete solidification.
+The domain was selected of size 400 by 400 grid points. A thin solid layer was introduced
+on the walls of the domain. The figure 5.4 shows the percentage of solid Ni v/s time graph.
+The total solidification was 2.3× 10 −7 seconds.
+
+Fig. 5.4 Percentage of solid Ni v/s time
+In the above simulation single seed is considered at a time. But in real case multiple
+seeds may present in the vicinity of each other. The growth of the dendrite from one of
+these seeds is going to be affected due presence of other dendrite. To study this a very small
+domain of 50 × 50 domain is considered. 4 seeds are placed as shown in figure 5.5a. From
+the figure 5.5 it can be seen that dendrites from each of these initially grew independently
+but later on when thermal fields of these dendrites meet each other the dendrite growth is
+ceased. The tip of dendrite tends to lose and becomes more rounded. Each time dendrites
+instead of merging with others tends to develop interfaces between them which later leads to
+form grain boundaries.
+
+43
+
+5.3 Phase Field Simulation of pure Ni
+
+(a) Initial solid seeds placed in the domain
+
+(b) Dendrite growth after non dimensional
+time t=0.0400
+
+(c) Dendrite growth after non dimensional
+time t=0.1000
+
+(d) Dendrite growth after non dimensional
+time t=0.3000
+
+Fig. 5.5 Multiple dendrite growth where domain size is 50 × 50 grid points
+
+44
+
+5.4
+
+Results and Discussion
+
+Phase field simulation of Al-Zn alloy
+
+The phase field modelling was applied to simulate the dendrite growth in Al-Zn alloy. In alloy
+solidification driving force is both latent heat generation and constitutional supercooling.
+Hence while modelling one has to include both solute transfer and heat transfer. In the
+early phase of the work non-isothermal solidification approach was followed, in which the
+temperature of the domain was changing. This was achieved by coupling thermal diffusion
+equation (eq. 3.4) with Allen Cahn and Cahn Hilliard equations. The PDEs were found be
+very steep hence the numerical solution was not stable. The main issues were that in alloy
+solidification heat transfer and solute transfer take place at different time scales. Usually heat
+transfer takes place faster than solute transfer. In most cases, the ratio of thermal (DT ) and
+solute (D) diffusivities (Lewis number=DT /D) ranges between 104 to 102 . This creates very
+steep thermal gradient in the solid liquid interface. So, for applying explicit finite difference
+method and to get numerically stable solution the grid spacing must be very small. This
+increases the run time of the program.
+Table 5.4 Simulation parameters for dendrite growth in Al-Zn alloy
+Grid Parameters
+Spatial Resolution, ∆x
+Time step, ∆t
+Domain size, Nx ×Ny
+No. of CPUs
+
+2.5 ×10−10 m
+3.125 ×10−12 seconds
+2000 ×2000
+64
+
+As Heat transfer, is occurring at a significantly faster rate compared to mass transfer
+(almost 100 times faster), can be often considered to be frozen or isothermal. This is because
+the temperature changes rapidly compared to the redistribution of solute, allows the process
+to be approximated as occurring in a quasi-steady state. Hence instead of coupling the
+solute and thermal field, the isothermal solidification approach was followed with including
+constitutional supercooling and ignoring latent heat generation. This allows to choose large
+grid spacing and solution will also be converging.
+The simulation dendrite growth in Al-Zn alloy is shown in figure 5.6a. The model
+parameters are showed in table 5.4. Initially whole domain was undercooled by 30 K. The
+time taken for dendrite growth was 6.24× 10 −7 seconds. The composition of aluminium is
+showed in figure 5.6b.
+
+45
+
+5.4 Phase field simulation of Al-Zn alloy
+
+(a)
+
+(b)
+
+Fig. 5.6 Dendrite growth simulation Al-Zn alloy (a)dendrite growth (b) Composition field of
+Aluminium
+
+46
+
+Results and Discussion
+
+(a) Thin solid layer placed initially near the
+walls
+
+(b) Dendrite growth after non dimensional
+time t=0.4000
+
+Fig. 5.7 Dendrite growth simulation without supercooling
+
+5.5
+
+The effect of supercooling on dendrite growth
+
+Various factors affect the solidification such as undercooling, latent heat , cooling rate etc. To
+study the effect of undercooling on solidification of pure Ni, a domain of size 300 × 300 grid
+points is set to its melting temperature (1728 K). Instead of Newman’s boundary condition
+(zero heat flux) the heat is extracted from all four boundaries. A thin layer (φ = 1) of solid
+phase is place at the walls of the domain.
+The figure 5.7b illustrates the time evolution of interface. It is evident that in nonundercooled melt the solidification front advances uniformly into the domain. The perturbations generating on the on the interface due to thermal noise were getting damped due to
+extraction of heat from the walls and we get a stable and flat interface.
+On the other hand, if we add a solid layer at the wall and supercooled liquid, we see
+initial perturbation on the walls of domain due to thermal noise (figure 5.8a). Some of these
+perturbations gets stable and grew into the domain. Those who are not stable gets melted
+back into the liquid. Figure 5.8b shows the columnar dendrite growth into to the undercooled
+liquid. It is also observed that in the regions closer to the corner the growth is slow. This is
+due to the fact that there is greater release of the latent heat causing the temperature to rise in
+the corner, which delays the solidification. In the central region of the domain wall, growth
+of primary branches is seen.
+
+47
+
+5.5 The effect of supercooling on dendrite growth
+
+(a) Dendrite growth after non dimensional
+time t=0.1000
+
+(b) Dendrite growth after non dimensional
+time t=0.4000
+
+Fig. 5.8 Dendrite growth simulation with supercooling
+
+5.5.1
+
+Effect of superccoling on dendrite tip velocity
+
+The dendrite tip velocity refers to the speed at which dendritic growth occurs during solidification or crystallization processes. The dendrite tip velocity reflects the rate at which the
+solidification front moves and dendrites extend.
+The importance of dendrite tip velocity lies in its influence on the microstructure and
+properties of the solidified material. Higher dendrite tip velocities generally result in finer
+and more branched dendritic structures. On the other hand, lower velocities lead to coarser
+dendrites with fewer branches. To study the dependency of tip velocity on the amount of
+undercooling was studied by calculating the tip velocity for the various values of undercooling
+using the proposed model. For the computation a seed is placed at the centre of edge of the
+domain having grid size of 400 by 400. The tip velocity of the primary branch was measured
+for undercooling levels from 10 to 160 K. The figure 5.9a shows the variation in the tip
+velocity with different supercooling levels. It can be seen that as the undercooling increases,
+the dendrite tip velocity is increased. As we increase the undercooling the thermal gradient
+between the solid and liquid interface increases which increases the rate of solidification
+i.e. the dendrite tip velocity. The result obtained from the simulation can be compared with
+experimental data available for pure Ni. Figure 5.9b shows the experimental tip velocity
+values are almost matching with the results obtained simulation.
+
+48
+
+Results and Discussion
+
+(b)
+(a)
+
+Fig. 5.9 Dendrite tip velocity v/s thermal supercooling (a) predicted from phase field model
+(b) experimental data[17]
+
+5.5.2
+
+Effect of superccoling on dendrite arm spacing
+
+Dendrite arm spacing refers to the average distance between adjacent dendritic arms in a
+solidified material. It is a measure of the spacing or distance between individual branches of
+dendrites that form during the solidification process.
+The dendrite arm spacing significantly influences the microstructure of the solidified
+material. Finer dendrite arm spacing corresponds to a higher number of dendritic branches
+and a greater surface area of the solid-liquid interface. This fine microstructure can provide
+enhanced mechanical properties, such as increased strength and improved fatigue resistance.
+On the other hand, coarser dendrite arm spacing results in fewer dendritic branches and a
+larger spacing between them, which may lead to reduced mechanical properties.
+For studying the effect on the undercooling on the arm spacing the phase field simulations
+were done for 4 four undercooling levels (∆T =150 K,200 K,250 K,300 K). The figure 5.10
+shows the dendrite arm growth for different undercooling levels and it can be seen that as the
+value of ∆T is increased from 150 K to 300 K the dendrite arms are getting closer.
+Figure 5.11 shows the relation between dendrite arm spacing and undercooling and it
+can be seen that as the undercooling increases the dendrite arm spacing is decreasing. This
+is because as the undercooling increases the rate of solidification increases, this promotes
+
+49
+
+5.5 The effect of supercooling on dendrite growth
+
+(a)
+
+(b)
+
+(c)
+
+(d)
+
+Fig. 5.10 Dendrite arm spacing for the different undercooling levels (a)∆T=150 K (b)∆T=200
+K ,(c)∆T=250 K,(d)∆T=300 K
+
+50
+
+Results and Discussion
+
+the formation of more nucleation sites in the liquid. These sites act as the starting points for
+dendritic growth. With a higher number of nucleation sites, dendrites form more densely,
+resulting in smaller dendrite arm spacing.
+
+Fig. 5.11 Dendrite arm spacing v/s thermal supercooling
+
+5.6 The effect of model parameters on the dendrite growth
+
+5.6
+
+51
+
+The effect of model parameters on the dendrite growth
+
+The dendrite growth is dendrite growth depends on various physical parameters such as latent
+heat, amount of undercooling ∆ etc. An attempt was made to study the effect of general
+model parameters used in in phase field modelling such as phase field mobility Mφ , strength
+of anisotropy δ is studied by varying their values and checking the changes occurring in
+the dendrite shape and growth. For this study the phase field model proposed by Kobayashi
+(1993) for pure materials is used (section 3.1). The simulation parameters used are given in
+table 5.5. The parameters are dimensionless and referred from the work of Kobayashi.
+Table 5.5 Simulation parameters used in the phase field model for dendrite growth (Kobayashi
+et.al. 1993)
+Grid Parameters
+Spatial Resolution, ∆x
+Time step, ∆t
+Domain size, Nx ×Ny
+ε0
+α
+γ
+
+5.6.1
+
+0.03
+10−4
+300 ×300
+0.01
+0.9
+10
+
+Effect of latent heat on the dendrite growth
+
+The release of latent heat is the main reason for the dendrite growth. As the latent heat is
+materialistic property hence it is going to vary for different materials. For different materials
+having different values latent heat will have different dendrite shape. To study this behaviour
+the parameter K in the dimension-less equation 3.5 which represents the dimensional-less
+latent heat generation is varied to see changes in dendrite shape. Figure 5.12 - 5.15 shows
+the growth of dendrite for different values of K.
+Initially, when K=0.8 ,the crystal exhibits strict convexity in the form of a hexagon.
+However, as the value of K increases, the convexity of the crystal is disrupted. At K=1.0,
+indentations can be observed at the center of the crystal edges. For K=1.2, there are various
+patterns that emerge during its growth process. The crystal begins with a hexagonal shape,
+followed by the appearance of indentations at the center of the edges, which then become
+slits. Subsequently, a tuck appears at the top of the slit, and finally a thick branching pattern
+emerges. This branching pattern is an intermediary between the hexagonal patterns and the
+branching patterns. Finally, for K=2, the crystal takes on a branching pattern. So we can
+
+52
+
+Results and Discussion
+
+conclude that as the value of K increases which means the amount of heat generated during
+solidification increases, the shape of dendrite changes from hexagonal to branching pattern.
+
+5.6 The effect of model parameters on the dendrite growth
+
+(a) Dendrite growth after non dimensional
+time t=0.0500
+
+(b) Dendrite growth after non dimensional
+time t=0.1000
+
+(c) Dendrite growth after non dimensional
+time t=0.2000
+
+(d) Dendrite growth after non dimensional
+time t=0.3000
+
+53
+
+Fig. 5.12 Growth of dendrite in the supercooled liquid where dimensionless latent heat K
+=0.8
+
+54
+
+Results and Discussion
+
+(a) Dendrite growth after non dimensional
+time t=0.0500
+
+(b) Dendrite growth after non dimensional
+time t=0.1000
+
+(c) Dendrite growth after non dimensional
+time t=0.2000
+
+(d) Dendrite growth after non dimensional
+time t=0.3000
+
+Fig. 5.13 Growth of dendrite in the supercooled liquid where dimensionless latent heat is K
+=1.0
+
+5.6 The effect of model parameters on the dendrite growth
+
+(a) Dendrite growth after non dimensional
+time t=0.0500
+
+(b) Dendrite growth after non dimensional
+time t=0.1000
+
+(c) Dendrite growth after non dimensional
+time t=0.2000
+
+(d) Dendrite growth after non dimensional
+time t=0.3000
+
+55
+
+Fig. 5.14 Growth of dendrite in the supercooled liquid where dimensionless latent heat is K
+=1.2
+
+56
+
+Results and Discussion
+
+(a) Dendrite growth after non dimensional
+time t=0.0500
+
+(b) Dendrite growth after non dimensional
+time t=0.1000
+
+(c) Dendrite growth after non dimensional
+time t=0.2000
+
+(d) Dendrite growth after non dimensional
+time t=0.3000
+
+Fig. 5.15 Growth of dendrite in the supercooled liquid where dimensionless latent heat is K
+=2
+
+5.6 The effect of model parameters on the dendrite growth
+
+5.6.2
+
+57
+
+Effect of strength of anisotropy on dendrite growth
+
+The following simulation discusses the relation between strength of anisotropy (δ ) and
+dendrite shape and growth. All the parameters except δ are kept fixed. The initial seed is
+placed at the centre of the bottom edge.
+In the first simulation, where δ = 0 showed perfect isotropic growth, the resulting patterns
+resemble viscous fingering(figure 5.16). As the crystal grows, tip splitting occurs, and the
+shapes of the curves connecting the tops of branches are approximately half circles until
+interactions with walls disrupt the pattern. For δ = 0.01, the crystal displayed characteristics
+of both isotropic and dendritic structures(figure 5.17). The vertical branches exhibit dendritic
+structure, while the other branches resemble viscous fingers. When the value of δ is changed
+to 0.02, a typical dendritic structure is showed in the figure figure 5.18 . The orientation of
+side branches is roughly perpendicular to the isothermal lines since it is the easiest direction
+for growth. At δ = 0.050, side branches form similarly to the previous case, but the side
+branch structure is slightly different. From last two cases (figure 5.18 and 5.19) it can be
+seen that as the the primary branch is longer for δ = 0.05 than for δ = 0.02. So it can be
+infer that as the δ increased from 0.02 to 0.05 tip velocity of primary branch is increased.
+
+58
+
+Results and Discussion
+
+(a) Dendrite growth after non dimensional
+time t=0.100
+
+(c) Dendrite growth after non dimensional
+time t=0.4000
+
+(b) Dendrite growth after non dimensional
+time t=0.2000
+
+(d) Dendrite growth after non dimensional
+time t=0.8000
+
+Fig. 5.16 Growth of dendrite in the supercooled liquid where strength of anisotropy δ = 0.00
+
+5.6 The effect of model parameters on the dendrite growth
+
+(a) Dendrite growth after non dimensional
+time t=0.100
+
+(b) Dendrite growth after non dimensional
+time t=0.2000
+
+(c) Dendrite growth after non dimensional
+time t=0.4000
+
+(d) Dendrite growth after non dimensional
+time t=0.8000
+
+59
+
+Fig. 5.17 Growth of dendrite in the supercooled liquid where strength of anisotropy δ = 0.01
+
+60
+
+Results and Discussion
+
+(a) Dendrite growth after non dimensional
+time t=0.100
+
+(c) Dendrite growth after non dimensional
+time t=0.4000
+
+(b) Dendrite growth after non dimensional
+time t=0.2000
+
+(d) Dendrite growth after non dimensional
+time t=0.8000
+
+Fig. 5.18 Growth of dendrite in the supercooled liquid where strength of anisotropy δ = 0.02
+
+5.6 The effect of model parameters on the dendrite growth
+
+(a) Dendrite growth after non dimensional
+time t=0.100
+
+(b) Dendrite growth after non dimensional
+time t=0.2000
+
+(c) Dendrite growth after non dimensional
+time t=0.4000
+
+(d) Dendrite growth after non dimensional
+time t=0.8000
+
+61
+
+Fig. 5.19 Growth of dendrite in the supercooled liquid where strength of anisotropy δ = 0.05
+
+62
+
+5.6.3
+
+Results and Discussion
+
+Effect of phase field mobility
+
+The phase field mobility Mφ is a parameter that describes how quickly the interface between
+two phases in a material can move. The growth of the dendrite is directly depends on
+the phase field mobility. In the kobayashi model phase field mobility is incorporated by a
+parameter τ and is defined as τ = 1/Mφ . To study effect Mφ on the growth rate of dendrite,
+the parameter τ in the model is varied from 0.0003-0.005. Other parameters were fixed.
+Dimensionless latent heat K was kept equal to 2.
+The figure 5.20 shows that, for small values of τ the dendrite grows faster. From the
+figure 5.20a and figure 5.20c it can be seen that growth process is much faster for τ =0.0003
+compared to τ equal to 0.0005. From this one can infer that as phase mobilty increases
+(i.e. τ decreases) atoms take lesser time to retain their equilibrium position and solid liquid
+interface movement is faster.
+
+63
+
+5.6 The effect of model parameters on the dendrite growth
+
+(a) τ=0.0003
+
+(b) τ=0.0004
+
+(c) τ=0.0005
+
+Fig. 5.20 Dendrite growth after dimensionless time t=0.4000 for the different values of τ
+
+Chapter 6
+Conclusion
+Present study focuses on the phase field modelling of dendritic solidification process. The
+phase of the system was expressed using a non conserved variable φ which is continuous
+in space and time. The model formulation was done for both pure metal as well as binary
+alloy. The numerical scheme was based on the explicit finite difference method for spatial
+discretization and simple forward Euler time marching scheme was utilized. For the phase
+field simulations algorithms were written in C and MATLAB. Visualization of result was
+done in MATLAB.
+The effect of thermal supercooling on the dendrite growth was studied using phase
+field methods. The variation in the dendrite tip velocity and dendrite arm spacing with
+supercooling was studied and results were compared with experimental data.
+The simulation of dendritic solidification pure Ni was studied for different types of
+seeding configurations. Along with that the effect of model parameters such as latent heat,
+strength of anisotropy and phase field mobility on the shape and growth of the dendrite was
+studied.
+The dendrite growth in Al-Zn alloy was simulated by coupling phase field equation with
+Cahn Hilliard equation and by assuming temperature of the domain remain constant. This is
+because during solidification heat transfer occurs faster than mass transfer, hence it is very
+difficult to couple temperature and solute diffusion equations and to obtain numerically stable
+solution using explicit finite difference method. From the study it is inferred that to solve
+non isothermal solidification of binary alloy model one should prefer implicit methods over
+explicit methods. But while applying implicit methods it is important to account nonlinearity
+in equations and extra computational load on computing platforms.
+The phase field simulation of binary alloy was performed with cluster computing platform
+(CPU) available in the institute, The high run time of the code was main problem faced during
+the simulation. To rectify the problem the different tactics were tried to bring run time under
+
+66
+
+Conclusion
+
+two days which is the maximum limit to run a code on cluster. To achieve well developed
+dendrites (secondary and ternary branching) it is important to optimize the algorithm such
+that the run time will come down and computational efficiency will increase.
+
+Chapter 7
+References
+1. Nele Moelans, , Bart Blanpain, Patrick Wollants,(2007), An introduction to phase-field
+modeling of microstructure evolution.
+2. P. Gerald Tennyson, Phase-field Modelling of Microstructure evolution during solidification incorporating CALPHAD description of Gibbs energies
+3. Ulloa, J.; Wambacq, J.; Alessi, R.; Degrande, G.; François, (2021) S. Phase-field
+modeling of fatigue coupled to cyclic plasticity in an energetic formulation. Comput.
+Method. Appl. Mech.
+4. Biswas, S., Schwen, D., Wang, H., Okuniewski, M., Tomar, V. (2018). Phase
+field modeling of sintering: Role of grain orientation and anisotropic properties.
+Computational Materials Science.
+5. Foundry Technology, 2nd edition
+6. S. Bulent Biner, Programming phase field modeling
+7. Penrose, O. and P. C. Fife (1990). Thermodynamically consistent models of phase-field
+type for the kinetic of phase transitions. Physica D, 43, 44–62
+8. Wang, S.-L. and R. Sekerka (1996a). Algorithms for phase field computation of the
+dendritic operating state at large supercoolings. Journal of Computational Physics,
+127, 110–117.
+9. Karma, A., Y. Lee, and M. Plapp (2000). Three-dimensional dendrite-tip morphology
+at low undercooling. Physical Review E, 61, 3996–4006.
+
+68
+
+References
+
+10. Wheeler, A. A., W. J. Boettinger, and G. B. McFadden (1993). Phase field model of
+solute trapping during solidification. Physical Review E, 47(3), 1893–1909
+11. Warren, J. A. and W. J. Boettinger (1995). Prediction of dendritic growth and microsegregation patterns in a binary alloy using the phase field method. Acta Materialia, 43(2),
+689–703.
+12. Kim, S. G., W. T. Kim, and T. Suzuki (1999). Phase-field model for binary alloys.
+Physical Review E, 60, 7186–7197
+13. Loginova, I., G. Amberg, and J. Agren (2001). Phase field simulations of nonisothermal binary alloy solidification. Acta Materialia, 49, 573–581.
+14. Kim, S. G. (2007). A phase-field model with antitrapping current for multicomponent
+alloys with arbitrary thermodynamic properties. Acta Materialia, 55, 4391–4399.
+15. Karma, A. (2001). Phase-field formulation for quantitative modeling of alloy solidification. Physial Review Letters, 87, 115701:1 – 115701:4.
+16. Kobayashi, R., Modeling and simulations of crystal growth. Computational Optimal
+Geometries. American Mathematical Society, Providence, (1991).
+17. Chalmers B. Principles of Solidification,John Wiley Sons; (1964).
+
+

@@ -14,6 +14,20 @@
 //   - Steady-state (quasi-static at each torch position)
 //   - Laminar flow (Re < 1000 typically)
 //
+// STATUS: STANDALONE RESEARCH MODULE -- NOT WIRED INTO THE PIPELINE.
+// Nothing in run.py / gui / codegen reads or executes this file, and it has
+// never been executed end-to-end by this repository, so it carries NO
+// validation. Two further caveats for whoever wires it up:
+//   1. The 2D domain maps (x2d -> Y transverse, y2d -> Z vertical), so the
+//      tangential derivative along the free surface is dx(...) and the vertical
+//      one is dy(...). The viscous strain terms below use a mix of dy(..) and
+//      dz(..); dz is a 3D operator and cannot express a 2D transverse gradient.
+//      Those terms must be rewritten as the full 2x2 strain before running.
+//   2. betaT here is 1.2e-4 /K while the OpenFOAM two-phase model uses 1.6e-5
+//      /K (a 7.5x discrepancy), and the Darcy epsilon is 1e-3 versus the
+//      usual ~1e-6, which over-damps the mushy zone. Align both before any
+//      cross-validation between this module and the OpenFOAM case.
+//
 // For full 3D VOF simulation, use OpenFOAM coupling
 // (see core/fluid/openfoam_coupling.py)
 // ============================================================
@@ -95,16 +109,29 @@ for(int iter=0; iter<nPoolIter; iter++){
           + Cdarcy*(1.-liquidFrac)^2/(liquidFrac^3 + epsD)
             * (vy*wy + vz*wz)
         )
-        // Buoyancy: rho*g*beta*(T-Tref) in z-direction
-        - int2d(ThPool)(
+        // Buoyancy: rho*g*beta*(T-Tref) acting UP in +z for T > Tref.
+        //
+        // SIGN: the term carried a leading MINUS with grav = +9.81, which
+        // makes hot (super-solidus) material accelerate DOWNWARD -- exactly
+        // inverted. (With a negative g the minus would have been right, so the
+        // pair was self-inconsistent.) Boussinesq buoyancy is +rho*g*beta*ΔT
+        // for a bottom-up hot zone.
+        + int2d(ThPool)(
             rhoL*grav*betaT*(T2d - Tsol)*liquidFrac * wz
         )
         // Marangoni BC on TOP surface (free surface).
         // FreeFEM square() labels: 1=bottom, 2=right, 3=top, 4=left.
-        // (Was int1d(ThPool,4): left wall — wrong boundary, killed surface flow.)
-        // tau = dgamma/dT * dT/dy applied as natural BC, gated by liquidFrac.
+        // (Was int1d(ThPool,4): left wall -- wrong boundary, killed surface flow.)
+        //
+        // AXIS: the free surface (label 3) is a line of constant vertical
+        // coordinate, so its tangent is the TRANSVERSE (Y) direction, and the
+        // tangential surface-tension gradient is dgamma/dT * dT/dY. In this 2D
+        // domain that is dx(T2d), NOT dy(T2d): dy is the derivative along the
+        // vertical axis, which is the surface NORMAL. Using dy mixed the
+        // normal gradient into the tangential shear stress and drove flow in
+        // the wrong direction along the pool surface.
         + int1d(ThPool, 3)(
-            dgdT * dy(T2d) * wy * liquidFrac
+            dgdT * dx(T2d) * wy * liquidFrac
         )
         + on(1, vy=0., vz=0.)   // bottom: no-slip (label 1)
         + on(2, vy=0.)           // right wall: symmetry-like (label 2)

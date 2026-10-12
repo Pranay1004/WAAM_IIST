@@ -1,0 +1,249 @@
+UV_NEW STUDY LOG — acoustic/vibration coupling in Kim pure-Ni model
+================================================================
+Date: 2026-10-10. Machine: Apple M-series, 10 cores, gcc-16 -O2.
+Toolchain check: originals build clean with OpenMP flag (codes are
+serial in practice — omp.h included but NO '#pragma omp' anywhere).
+
+FOLDER LAYOUT
+  originals/   pristine copies of Tip_Velocity.c, Arm_Spacing.c + binaries
+  modified/    Tip_Velocity_uv.c, Arm_Spacing_uv.c (UV-coupled sources)
+  results/     one subdir per run (binary + csv + stdout + png)
+  analyze.py   csv loader, tip/arm metrics, jet plots
+
+WHAT WAS CHANGED (and only this)
+  phi-equation driving term:  t3 = w*g' + 30*g*(H/Tm)*(T - Tm)
+  becomes:                    t3 = w*g' + 30*g*(H/Tm)*(T - Tm_eff(x,t))
+  with Tm_eff = Tm + dTmdp * P_A * sin(omega*t - k*x)   (travelling, MODE=1)
+   or  Tm_eff = Tm + dTmdp * P_A * sin(k*x)*sin(omega*t) (standing, MODE=2)
+  Temperature equation untouched. No flow coupling (per instruction: no Level 2).
+  Hygiene only: explicit phi=0 init + srand(UV_SEED). Filenames embed PA/f.
+
+PARAMETERS
+  dTmdp = 2.5e-8 K/Pa (Ni Clausius-Clapeyron estimate)
+  mild:   P_A = 4e8 Pa -> Tm swing ~10 K
+  strong: P_A = 1.2e9 Pa -> Tm swing ~30 K
+  f = 10 MHz -> ~5 acoustic cycles per 5e-7 s run (SCALED frequency;
+  a real 20 kHz wave has 50 us period vs 0.5 us run = frozen field).
+  Real 1 MPa ultrasound gives ~0.025 K shift: invisible. P_A is a
+  sensitivity parameter. Always report response-vs-amplitude.
+
+RUN TABLE
+  #  case        source                  grid      dT    steps  status
+  1  orig_tip    Tip_Velocity.c          600x50    170K  5e5    DONE -> v170.csv
+  2  tip_ctl     Tip_Velocity_uv MODE=0  600x50    170K  5e5    DONE (control)
+  3  tip_mild    Tip_Velocity_uv MODE=1  600x50    170K  5e5    DONE (PA=4e8)
+  4  tip_strong  MODE=1 PA=1.2e9         600x50    170K  5e5    DONE
+  5  orig_arm    Arm_Spacing.c           400x400   200K  5e5    RUNNING -> space_200.csv
+  6  arm_mild    Arm_Spacing_uv MODE=1   400x400   200K  5e5    RUNNING
+  7  arm_strong  MODE=1 PA=1.2e9         400x400   200K  5e5    RUNNING
+
+ORIGINAL TIP RESULT (run 1, v170.csv, DeltaT = 170 K)
+  - Stalk crosses full 12 um channel by ~1.2e-7 s (snap 2-3 of control).
+  - Early tip velocity ~85-90 m/s (1-D channel guided; thesis Fig 5.9
+    reports lower values on open domains — geometry matters).
+  - Final solid fraction 0.394. Tip hits far wall: final frame alone
+    cannot give velocity; snapshots (runs 2-4) fix this.
+
+UV TIP RESULTS (runs 2-4, same seed => differences are UV-only)
+  solid fraction breathes at the acoustic period (1e-7 s):
+    control: flat 0.393-0.394 after wall hit
+    mild:    oscillates 0.389/0.398
+    strong:  oscillates 0.378/0.407 (+/-4 pct), tip position at far wall
+             oscillates 11.82-11.92 um = cyclic MELT-BACK + REGROWTH
+  early (pre-wall) velocity: ctl 89, mild 84, strong 73 m/s.
+  Final frames: control stalk smooth; mild rougher edges; strong
+  visibly asymmetric, ragged side branches (see compare_tip_final.png).
+  Interpretation: oscillating undercooling +/-10-30 K modulates the
+  interface driving force each cycle; strong case periodically erases
+  the most undercooled protrusions -> slower net advance + rougher front.
+  This is the correct qualitative signature of vibration-assisted growth.
+
+ORIGINAL ARM RESULT (run 5, space_200.csv, DeltaT = 200 K, DONE)
+  - Wall layer at bottom, ~8-9 columnar primaries across 8 um domain
+    => primary spacing ~0.9 um. Solid fraction 0.474 at t = 5e-7 s.
+  - Matches thesis Fig 5.8/5.10 morphology (columnar competition,
+    laggards pinched off). See space_200_orig.png.
+  - Compute cost: ~66 min single-core (8e10 cell-steps).
+
+UV ARM RESULTS (runs 6-7, DeltaT = 200 K, DONE; same seed as each other)
+  Final solid fraction: orig 0.4738 / mild 0.4692 / strong 0.4605
+    => monotonic drop with P_A: less net solid at fixed time, consistent
+    with slower net tip advance seen in tip runs.
+  Interface length: 1.530e-4 / 1.484e-4 / 1.525e-4 m (flat within noise).
+  Snapshots: after ~1.5e-7 s the columnar forest is established and the
+  solid fraction BREATHES at the acoustic period 1e-7 s:
+    mild:   0.4694/0.4787 (+/-1 pct)
+    strong: 0.4610/0.4873 (+/-3 pct)
+  Final frames (compare_arm_final.png): same ~8-9 primaries, but UV
+  fronts are visibly rougher; strong case shows more ragged inter-
+  primary pockets (periodic melt-back of thin necks).
+  Compute cost: ~80 min single-core each (extra sin() per cell per step).
+
+CONCLUSIONS
+  1. Coupling works: oscillating Tm_eff(x,t) modulates interface driving
+     force; response scales monotonically with P_A (dose-response).
+  2. Signature effects: solid-fraction breathing at f, cyclic melt-back /
+     regrowth at the front (strong case), rougher side branches, slower
+     net advance (tip: 89 -> 84 -> 73 m/s; arm solid frac: .474 -> .469 -> .461).
+  3. Limits (be honest in any write-up): scaled f (10 MHz) and scaled P_A;
+     real 20 kHz / 1 MPa fields give ~0.025 K shifts = invisible here.
+     No cavitation, no streaming, no solute coupling yet.
+  NEXT: standing-wave mode (MODE=2) for node/antinode patterning;
+  binary_serial.c + solute advection; fragmentation rule (Level 3).
+
+RUN TABLE (binary, all 100x100, T = 1554 K, ~1 min each)
+  8  binary_orig   binary_serial.c            DONE -> phib2.csv, cb2.csv
+  9  binary_ctl    binary_serial_uv MODE=0    DONE
+  10 binary_mild   MODE=1 PA=4e8  f=20MHz     DONE
+  11 binary_strong MODE=1 PA=1.2e9 f=20MHz    DONE
+  12 binary_probe  MODE=1 PA=1e10 f=20MHz     DONE (diagnostic, +/-145 K)
+
+BINARY RESULT: NULL. All runs identical: solid 0.0086, c uniform
+0.4083 everywhere, zero segregation. Coupling verified LIVE (correct
+settings in stdout; ctl/mild/strong diffs scale with PA) but response
+is ~1e-42: arithmetically present, physically null. Even the +/-145 K
+probe changes nothing.
+MECHANISM (verified in data): only 541/10000 cells lie in (0,1), and
+ALL are within 1e-12 of 0 or 1, so g = phi^2(1-phi)^2 ~ 1e-52
+everywhere and every Tm-dependent term (H_A/H_B) plus noise (~g*t3)
+vanishes identically. Root cause: interface width d = 4.89e-6 m vs
+grid dx = 4.6e-6 m — the interface is ONE cell wide, unresolvable;
+the scheme collapses it to a step and freezes. Pure-Ni responded
+because it runs far from equilibrium with a live multi-cell interface;
+binary_serial.c as checked in is a pinned numerical remnant (it matches
+validation_results to 6e-9, but nothing — UV included — can move it).
+FIX for a real binary UV experiment: dx << d (thesis Table 5.4 regime:
+2000^2, dx = 2.5e-10 m). Deeper undercooling alone will NOT help.
+Cost at 2000^2 is hours; awaiting go-ahead.
+
+GATED TESTS (evening of 10 Oct, before committing the night):
+  T1 binary_T1500: 100^2 serial @ T=1500 K -> frozen 0.0086. Driving
+     alone does NOT unfreeze. Resolution confirmed as THE blocker.
+  T2 binary_res800: 800^2 (dx = d/8.5) @ T=1554, MODE=0 -> 2624 live
+     interface cells (vs 541 binary-exact before), clean diffuse
+     quarter-disc seed, but no net growth and c still uniform:
+     resolution fixed the interface, but T=1554 has ~zero drive.
+  T3 res800 @ T=1500, 3e4 steps -> no growth yet (too short).
+  T4/D res800 @ T=1500 1e5 steps + res800 @ T=1400 3e4 steps ->
+     T=1400 STILL frozen 0.0080. Killed D.
+  Finding: binary_serial family needs BOTH resolution AND drive, and
+  even then solute-diffusion time may exceed affordable steps.
+  PIVOT: binary_nondm.c (50^2, T=1574) reproduces repo cb.csv
+  BITWISE (diff 0.0) AND has live segregation c = [0.2846, 0.40381].
+  Different cross-coupling (vm/R terms active) keeps its c-field alive.
+  Overnight vehicle = nondm, not serial.
+
+NIGHT QUEUE (launched 21:03 IST 10 Oct, night_run.sh, sequential, ~5 h):
+  bn_ctl / bn_mild / bn_strong: nondm 50^2, nstep=2e6, f=1 MHz (~4 cyc)
+  tip_smild / tip_sstrong: standing wave MODE=2, PA 4e8/1.2e9 (control = tip_ctl rerun data)
+  arm_nctl / arm_smild / arm_sstrong: standing wave + fresh control
+  Log: results/night.log. Standing wave tests node/antinode patterning:
+  p = PA*sin(kx)*sin(wt), lambda = c/f = 400 um >> 8-12 um domain,
+  so spatial envelope is gentle (documented as pattern study).
+
+NIGHT RESULTS (morning of 11 Oct; arms still running, see night.log)
+BN TRIO (nondm 50^2, 2e6 steps = 4.2 us, f=1 MHz):
+  All seeds slowly REMELT at T=1574 (solid 0.034 -> 0.005): the bath
+  is above this composition's liquidus, so melting is correct physics.
+  Dose-ordered UV effects on the way down:
+   - solid retained: ctl 0.0052 / mild 0.0052 / strong 0.0060 at end;
+     strong consistently highest from snap 3 on (0.0316 vs 0.0284).
+   - c_min floor: 0.163 / 0.165 / 0.170. Strong depletes faster early
+     (aggressive repartitioning) then holds a higher floor.
+   - c_std shrinks monotonically: 3.089e-2 -> 3.070e-2 -> 3.020e-2.
+  No visible breathing at snap cadence (4.8 frames/period): response is
+  a MEAN SHIFT (rectified retention + slight homogenization), not
+  oscillation. Cold half-cycles regrow more than hot halves melt.
+  CAVEAT: mean(c) drifts down ~5e-3 in ALL cases (non-conservative
+  t5/t7 cross terms: t*lap_phi not in divergence form). Same-scheme
+  comparison keeps dose ordering valid; strong leaks least (-4.95e-3
+  vs -5.08e-3). Absolute segregation numbers carry this ~1% bias.
+TIP STANDING (MODE=2): smild 88.8 m/s, sstrong 87.6 m/s vs travelling
+  89.2/84.4/73.2. Standing shows ~no dose effect, AS PREDICTED:
+  sin(kx) envelope max = sin(0.19) = 0.19, so "strong" delivers only
+  +/-6 K effective at the seed. Inconclusive by construction; travelling
+  set remains the demonstrator. Lesson: real node patterning needs
+  scaled wavelength (UV_LAMBDA override) or bigger domain.
+ARMS: nctl done, smild running, sstrong queued (~1.5 h left).
+
+================================================================
+CLEANUP TRIO + LEVEL-2 STREAMING (11 Oct, after night runs)
+================================================================
+
+ITEM 1 — CONSERVATION FIX (binary_nondm_cons.c, CONS_MODE flag)
+  Problem: c-equation used coeff*laplacian for BOTH D*lap_c and
+  (t5+t7)*lap_phi. With spatially-varying D(phi) and (t5+t7)(c,phi),
+  coeff*lap != div(coeff*grad); the missing grad(coeff)·grad parts leak
+  solute. Verified: legacy sum(c) drifts -0.253% over 4e5 steps.
+  Fix: true flux-divergence form with face-averaged coefficients,
+  computed on OLD state in a separate conservative pass (Loop A2).
+  Result: drift drops to -0.010% (25x better; residual is the t4
+  cross-gradient term, not a Laplacian-multiply, left as-is).
+  sum(c) audit now printed each snapshot.
+  ALSO fixes the physics, not just the number:
+    legacy  final c_max=0.4038 (=initial, pile-up DRAINED), solid 0.0052
+    conserved final c_max=0.5265 (real boundary layer),  solid 0.0372
+  The leaky scheme drained solute from the interface, collapsed the
+  local liquidus, and made the seed REMELT. Conserved scheme keeps the
+  solute pile-up, and the seed GROWS. Morphology direction flips.
+  => All night-run "retention" numbers were on the leaky scheme.
+     Redone below (bn2_*).
+
+BN2 DOSE-RESPONSE (conserved, travelling, 2e6 steps, f=1MHz):
+  ctl     PA=0:     solid=0.0372  c_min=0.36677 c_max=0.52648 std=8.260e-3
+  mild    PA=4e8:   solid=0.0376  c_min=0.36760 c_max=0.51959 std=7.953e-3
+  strong  PA=1.2e9: solid=0.0384  c_min=0.36959 c_max=0.49853 std=7.193e-3
+  Clean monotonic in BOTH directions now:
+    - solid INCREASES with dose (0.0372->0.0376->0.0384): vibration
+      retains/grows more solid (cold-half regrowth wins).
+    - c_std DECREASES (8.26->7.95->7.19e-3): vibration HOMOGENIZES.
+    - c_max DECREASES (0.526->0.520->0.499): interface boundary-layer
+      peak is flattened by acoustic mixing.
+  Two independent monotonic markers (solid up, segregation down) with
+  dose = defensible alloy result, now on a conservation-clean footing.
+
+ITEM 2 — SCALED-WAVELENGTH STANDING (node/antinode patterning)
+  Default lambda=c/f=400um >> domain => envelope max sin(0.19)=0.19,
+  weak (already known). tip_ctl 89.4 / stand_mild 89.4 / stand_strong
+  85.8 m/s: mild null, strong only -4%.
+  Scaled lambda to FIT the domain so nodes/antinodes land on the front:
+    lambda=6um  (tip, 12um domain): seed sits at x=12=2lambda => NODE.
+      => mild 89.4 = control, EXACTLY null. Node carries no Tm swing.
+    lambda=8um  (tip): seed at x=12=1.5lambda => ANTINODE.
+      => mild 92.2 m/s (+3% vs control 89.4). Response APPEARS.
+  Verdict: standing-wave effect is real but ONLY at antinodes, and it is
+  a local oscillation (small net speedup) vs travelling's systematic
+  front-wide melt-back (slowdown 89->73). Node=null / antinode=effect
+  is the clean spatial-structure signature. lambda is a SCALED study
+  (real lambda at 10MHz = 400um >> domain); documented as such.
+
+ITEM 3 — AMPLITUDE-REALISM FIGURE (results/amplitude_realism.png)
+  Log-log fit of tip slowdown vs P_A: a 1% (noise-floor) effect needs
+  P_A ~ 273 MPa (~6.8 K Tm swing). Real ultrasound = 1 MPa -> 0.025 K
+  -> effect ~0.004%, i.e. ~250x BELOW the numerical noise floor.
+  The melting-point (Clausius-Clapeyron) channel has a hard ceiling:
+  it cannot explain industrial grain refinement. Streaming/cavitation
+  must carry it (matches P49 experiment).
+
+LEVEL-2 — ACOUSTIC STREAMING (binary_nondm_l2.c, STREAM/UV_VEL/STREAM_PHI)
+  Pe analysis: code uses D_l=1e-5 (thermal-like, NOT realistic solute
+  D~1e-9). With code D, Pe=v*L/D = 23 / 230 / 2300 at v=1/10/100 m/s.
+  CFL advection limit v<dx/dt=2.2e6 m/s: any realistic v is safe.
+  Over the 4.2us window even v=10 moves solute only ~9 cells => streaming
+  matters at the STEEP interface boundary layer, not as bulk transport.
+  Coupling: -v.grad(c) and -v.grad(phi), first-order upwind.
+    STREAM=1 unidirectional (+x, travelling-wave streaming)
+    STREAM=2 standing-jet v~sin(2kx) (Rayleigh streaming)
+    STREAM_PHI=1 advects phi too; =0 advects solute ONLY.
+  DECISIVE TEST (v=100, 6e5 steps):
+    v=0       solid=0.0344  c=[0.371,0.487]
+    c-only    solid=0.0328  c=[0.377,0.480]  <- stable, narrows c (mixes)
+    c+phi     solid=0.1356  c=[0.378,0.478]  <- SPURIOUS 4x solid blowup
+  => Advecting the ORDER PARAMETER phi with upwind is INVALID: it
+     destabilizes the interface and inflates solid 4x. Level-2 must
+     advect SOLUTE ONLY (c). c-only is stable and physical: advection
+     homogenizes solute (narrows c range) and slightly reduces net
+     growth (solid -5%), consistent with flow-assisted mixing.
+  This is a real methodological finding: naive phase-field+flow coupling
+     via phi-advection breaks; a proper formulation (anti-trapping
+     currents, flow-modified driving force) is needed to move phi.

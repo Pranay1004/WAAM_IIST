@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast gate: format, static analysis, Aqua, and the operator-level verification
+  # suite. Target: well under 10 minutes, because a suite nobody waits for is a suite
+  # nobody runs. The expensive suites are scheduled separately.
+  fast:
+    name: fast (Julia ${{ matrix.version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["1.10", "1.13", "nightly"]
+        os: [ubuntu-latest]
+        include:
+          - version: "1.13"
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        env:
+          GROUP: All
+      - name: Static analysis (JET + Aqua)
+        if: matrix.version == '1.13' && matrix.os == 'ubuntu-latest'
+        run: |
+          julia --project=. -e '
+            using Pkg; Pkg.add(["JET", "Aqua"])
+            using JET, Aqua, WAAMFlow, Test
+            # Type-stability smoke test on the hot kernels. A regression here costs
+            # orders of magnitude in the 3400 s case, and is invisible in output.
+            JET.@test_opt WAAMFlow.face_fluxes(rand(64), 0.1, 1.0, WAAMFlow.minmod)
+            Aqua.test_all(WAAMFlow; ambiguities = true, piracies = true)
+          '
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.13"
+      - uses: julia-actions/cache@v2
+      - name: Build documentation (doctests enabled)
+        env:
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+        run: |
+          julia --project=docs -e '
+            using Pkg; Pkg.develop(path="."); Pkg.instantiate()
+            include("docs/make.jl")'

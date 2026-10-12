@@ -18,7 +18,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gui = ["pywebview>=4.0"]
 dev = ["ruff>=0.4"]
 
 [tool.setuptools]

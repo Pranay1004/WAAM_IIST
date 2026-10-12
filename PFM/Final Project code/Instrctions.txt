@@ -1,0 +1,85 @@
+		PHASE FIELD MODELLING OF SOLDIFICATION PROCESS
+		How to use codes
+
+
+1. Kobayashi model
+
+Use Kobayashi.mlx file to run the Kobayashi model. 
+To change seeding config. you can change in nucleation section made inside the code.
+
+------------------------------------------------------------
+2. Kim pure Ni. (MATLAB version)
+
+You can use Pure_melt_kim.mlx 
+------------------------------------------------------------
+
+3.Kim pure Ni (cluster version)
+ 
+use pure_omp.c file in cluster. This code is parallelised using OpenMP. It is compiled as follows
+
+   $ g++ -fopenmp omp_pure.c -lm -o tip1.
+
+   You can use script file to run the code
+
+   $ sbatch openmp.sh
+
+or run in command window as ,
+
+  $ ./tip1.
+
+
+ use plot1.mlx to plot phi and temperature.
+------------------------------------------------------------
+
+4 Binary Cu_Ni 
+
+
+use binary_serial.c file in cluster. This code is parallelised using OpenMP. It is compiled as follows
+
+   $ g++ -fopenmp binary_serial.c -lm -o tip1.
+
+   You can use script file to run the code
+
+   $ sbatch openmp.sh
+
+For parallel implementation using OpenMP+ MPICH you can use binary_isothermal_mpi.c or binary_Hybrid.c codes. It can b compiled as ,
+
+$ mpicc -fopenmp binary_serial.c -lm -o tip1.
+
+   You can use script file to run the code
+
+   $ sbatch hybrid.sh
+
+use plot1.mlx to plot phi and temperature.
+-----------------------------------------------------
+
+5 Calculation of Dendrite arm spacing
+
+run the code Arm_spacing code in cluster. It will five .csv file for particular supercooling condition. That .csv file contains values of phi at each grid location.
+
+use plot1.mlx to plot the image of dendrite from .csv file. Save the image.
+
+To calculate dendrite arm spacing use DistanceToolExample.m. 
+
+Open DistanceToolExample.m. and put the name of image you just saved. put it like this way on line 11...
+
+	% Read image into the workspace. 
+	im = imread('300.jpg');
+
+
+Run DistanceToolExample.m. and a window will pop. Follow following procedure to calculate distance. 
+
+	1. when you move your cursor from one point to other on this image, it will show a segment with distance. 
+
+	2 First provide reference distance. For that draw a segment on X-axis. right click on the segment and put reference length. 
+
+	3 As we know the length of this segment i.e. it is equal to Nx*dx. Put this length as reference.
+
+	4 After that if you draw any segment on the image it will give accurate distance.
+
+
+
+
+
+
+

@@ -20,9 +20,45 @@ from typing import Dict, Any, List, Optional
 from core.multimaterial.alloy_metallurgy import get_alloy_scheme, resolve_indent_phases
 
 
+def canonical_run_dir(run_dir: str) -> str:
+    """Resolve the canonical result tree of a run.
+
+    MPI Phase 1 writes per-rank output trees (rank0/, rank1/, ...) so ranks can
+    never corrupt each other's files; rank 0's tree is canonical. A serial run
+    has no rank subdirectories. Resolving here -- once -- keeps every
+    downstream path correct for both layouts without touching each reader.
+    """
+    rank0 = os.path.join(run_dir, "rank0")
+    if os.path.isdir(rank0):
+        return rank0
+    return run_dir
+
+
+def _load_solver_results(run_dir: str) -> dict:
+    """Load solver_results.json written by the generated .edp, or {} if absent.
+
+    This is the authoritative structured record of a run. It exists because the
+    console banner is human prose: its wording changed once, after which every
+    scraped distortion/stress silently became 0.0 while an unconverged run kept
+    matching an intermediate line and reported iteration error as a result.
+    """
+    run_dir = canonical_run_dir(run_dir)
+    for cand in (os.path.join(run_dir, "solver_results.json"),
+                 os.path.join(run_dir, "FreeFEM", "solver_results.json")):
+        try:
+            if os.path.exists(cand):
+                with open(cand, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except (OSError, ValueError):
+            continue
+    return {}
+
+
 def generate_run_summary(run_dir: str, params: Dict[str, Any], return_code: int = 0) -> Dict[str, Any]:
     """Extract key metrics and compile an executive run summary JSON."""
-    run_dir = os.path.abspath(run_dir)
+    run_dir = canonical_run_dir(os.path.abspath(run_dir))
     sim_log_path = os.path.join(run_dir, "sim.log")
     
     # Auto-load parameters.json if available in run_dir
@@ -39,18 +75,42 @@ def generate_run_summary(run_dir: str, params: Dict[str, Any], return_code: int 
             pass
 
     # Defaults
+    # Defaults are None, not 0.0. A structural value that was never determined
+    # must not read as "zero distortion / zero stress", which is a different and
+    # much more dangerous claim than "not measured".
     max_tpeak = 0.0
-    max_disp_mm = 0.0
-    max_stress_mpa = 0.0
-    yield_capped = bool(params.get("enable_yield_truncation", False))
+    max_disp_mm = None
+    max_stress_mpa = None
+    # NOTE: "enable_yield_truncation" is an obsolete parameter kept only for
+    # backwards compatibility. The generator replaced post-hoc clipping with a
+    # true Cauchy stress return mapping, so the flag no longer describes any
+    # behaviour. Report it as False rather than echoing a setting that is inert.
+    yield_capped = False
     thermal_frames = 0
     execution_time_s = 0.0
-    
-    # Parse sim.log if available. Number pattern accepts scientific notation
-    # (solver prints e.g. 1.50475e-07). Multiple spellings are accepted because
-    # DEFAULT.edp and generated scripts phrase the banners differently.
+    mechanics_converged = None
+
+    # --- AUTHORITATIVE SOURCE: solver_results.json ---
+    # The generated .edp writes its own results file. Reading it is the only
+    # trustworthy way to get the structural numbers, because the human-readable
+    # banner is prose whose wording can change, and because the convergence flag
+    # travels with the values: when the equilibrium solve did not converge the
+    # file carries JSON null and the flag is false, so an unconverged iteration
+    # cannot be reported as a result.
+    #
+    # The regex fallback below is retained ONLY for runs produced before this
+    # file existed (or by a hand-written .edp), and it explicitly refuses to
+    # harvest distortion/stress when the log says the solve did not converge.
+    solver_results = _load_solver_results(run_dir)
+    if solver_results:
+        mechanics_converged = solver_results.get("mechanics_converged")
+        max_tpeak = float(solver_results.get("max_peak_temp_C") or 0.0) or max_tpeak
+        max_disp_mm = solver_results.get("max_disp_mm")
+        max_stress_mpa = solver_results.get("peak_von_mises_MPa")
+        thermal_frames = int(solver_results.get("thermal_frames") or 0)
+
     _NUM = r"([\d\.eE+\-]+)"
-    if os.path.exists(sim_log_path):
+    if not solver_results and os.path.exists(sim_log_path):
         try:
             with open(sim_log_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
@@ -65,17 +125,39 @@ def generate_run_summary(run_dir: str, params: Dict[str, Any], return_code: int 
                     if step_peaks:
                         max_tpeak = max(step_peaks)
 
-                m_disp = re.search(r"(?:Max distortion|Transient Peak Displacement):\s*" + _NUM + r"\s*mm", content)
-                if m_disp:
-                    max_disp_mm = float(m_disp.group(1))
+                # Did the final equilibrium solve converge? If the banner says it
+                # did NOT, do not scrape distortion/stress at all -- those lines
+                # then belong to intermediate, unconverged iterates.
+                unconverged = bool(re.search(
+                    r"Final cold-state residual warpage \(Uz\):\s*NOT REPORTED", content))
+                if unconverged:
+                    mechanics_converged = False
+                else:
+                    # Prefer the explicit final-state lines; fall back to the
+                    # legacy per-solve banner spelling.
+                    m_disp = re.search(
+                        r"Final cold-state residual warpage \(Uz\):\s*" + _NUM + r"\s*mm", content)
+                    if not m_disp:
+                        m_disp = re.search(
+                            r"(?:Max distortion|Transient Peak Displacement):\s*"
+                            + _NUM + r"\s*mm", content)
+                    if m_disp:
+                        max_disp_mm = float(m_disp.group(1))
 
-                m_str = re.search(r"(?:Max von Mises|Peak von Mises)(?: Stress)?:\s*" + _NUM + r"\s*MPa",
-                                  content)
-                if m_str:
-                    max_stress_mpa = float(m_str.group(1))
+                    m_str = re.search(
+                        r"Final cold-state peak von Mises stress:\s*" + _NUM + r"\s*MPa", content)
+                    if not m_str:
+                        m_str = re.search(
+                            r"(?:Max von Mises|Peak von Mises)(?: Stress)?:\s*"
+                            + _NUM + r"\s*MPa", content)
+                    if m_str:
+                        max_stress_mpa = float(m_str.group(1))
 
-                # Direct VTU fallback if log didn't capture or printed 0
-                if max_disp_mm == 0.0:
+                # Direct VTU fallback if the log yielded nothing. Skipped when the
+                # solve is known to be unconverged: the VTU holds the same
+                # unconverged field, so harvesting it would republish iteration
+                # error as a measurement.
+                if not max_disp_mm and mechanics_converged is not False:
                     try:
                         import glob
                         import pyvista as pv
@@ -157,22 +239,29 @@ def generate_run_summary(run_dir: str, params: Dict[str, Any], return_code: int 
     # Automatic physics-sanity flags so unphysical regimes never pass silently.
     # Thresholds are overridable via params (T_boil_C, sig_yield_MPa); the stress
     # flag explicitly notes the framework's raw-uncapped convention.
-    t_boil = params.get("T_boil_C", 2862.0)
-    try:
-        t_boil = float(t_boil)
-    except (TypeError, ValueError):
-        t_boil = 2862.0
-    sig_yield = params.get("sig_yield_MPa", 450.0)
-    try:
-        sig_yield = float(sig_yield)
-    except (TypeError, ValueError):
-        sig_yield = 450.0
+    # The DEFAULTS come from the material database, not from carbon steel: an
+    # aluminium run (Tboil 2519 C, sigma_y ~150 MPa) used to be checked against
+    # 2862 C / 450 MPa, which silently missed both regime violations.
+    mat_dep_final = _clean_mat_name(params.get("material_dep", params.get("deposit_material", params.get("material"))), "ER70S-6")
+    t_boil = _param_float(params, "T_boil_C", None)
+    if t_boil is None:
+        t_boil = _material_boiling_C(mat_dep_final)
+    sig_yield = _param_float(params, "sig_yield_MPa", None)
+    if sig_yield is None:
+        sig_yield = _material_yield_MPa(mat_dep_final)
     physics_flags = []
+    if mechanics_converged is False:
+        physics_flags.append(
+            "MECHANICS_NOT_CONVERGED: the structural equilibrium solve did not reach "
+            "its tolerance, so distortion and residual stress are reported as null. "
+            "These values are iteration error, not physics. Lower "
+            "fixture_stiffness_ratio_z/xy, raise mech_max_newton_iter, or tighten "
+            "mech_newton_tol / mech_newton_tol_force.")
     if max_tpeak > t_boil:
         physics_flags.append(
             f"TMAX_EXCEEDS_BOIL: peak {max_tpeak:.0f} C > boil {t_boil:.0f} C "
             f"(no evaporation sink / coarse mesh-vs-source / short dwell suspected)")
-    if max_stress_mpa > sig_yield:
+    if max_stress_mpa is not None and max_stress_mpa > sig_yield:
         physics_flags.append(
             f"STRESS_EXCEEDS_YIELD: {max_stress_mpa:.0f} MPa > {sig_yield:.0f} MPa "
             f"(raw uncapped elastic output, not a capped strength prediction)")
@@ -198,12 +287,21 @@ def generate_run_summary(run_dir: str, params: Dict[str, Any], return_code: int 
             "layers_count": params.get("n_layers", 1),
             "layer_height_mm": round(params.get("h_bead", 0.003) * 1000.0, 2),
             "bead_width_mm": round(params.get("ty_dep", 0.008) * 1000.0, 2),
+            "wire_diameter_mm": round(float(params.get("wire_diameter_mm", (params.get("d_wire", 1.2e-3) * 1000.0 if params.get("d_wire", 1.2e-3) < 0.05 else params.get("d_wire", 1.2)))), 2),
+            "wire_feed_speed_m_min": round(float(params.get("v_wire", params.get("wire_feed_speed", 5.0))), 2),
+            "wire_feed_speed_m_s": round(float(params.get("v_wire", params.get("wire_feed_speed", 5.0))) / 60.0, 4),
+            "wire_mass_deposition_rate_kg_h": round(float(params.get("wire_mass_rate_kg_h", 0.0)), 2),
+            "theoretical_bead_area_mm2": round(float(params.get("a_bead_theo_mm2", 0.0)), 2),
             "interpass_wait_s": params.get("t_wait", 60.0),
         },
         "simulation_results": {
             "max_peak_temp_C": round(max_tpeak, 2),
-            "max_distortion_mm": round(max_disp_mm, 4),
-            "max_von_mises_stress_MPa": round(max_stress_mpa, 2),
+            # None, never 0.0, when the equilibrium solve did not converge: a zero
+            # would read as "no distortion", which is the opposite of the truth.
+            "max_distortion_mm": (None if max_disp_mm is None else round(max_disp_mm, 4)),
+            "max_von_mises_stress_MPa": (None if max_stress_mpa is None
+                                         else round(max_stress_mpa, 2)),
+            "mechanics_converged": mechanics_converged,
             "yield_stress_capped": yield_capped,
             "physics_flags": physics_flags,
             "vickers_hardness_min_HV": hv_min,
@@ -310,99 +408,558 @@ Render()
     return script_path
 
 
+def _param_float(params: dict, key: str, default=None):
+    """Read a numeric parameter, ignoring nulls and non-numeric strings."""
+    try:
+        v = params.get(key, default)
+        if v is None:
+            return None
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _material_db_entry(mat_name: str) -> dict:
+    """Look up an alloy in core/multimaterial/material_database.json."""
+    try:
+        dbp = Path(__file__).resolve().parent.parent / "multimaterial" / "material_database.json"
+        with open(dbp) as fh:
+            db = json.load(fh)
+        alloys = db.get("alloys", db)
+    except Exception:
+        return {}
+    if not isinstance(alloys, dict):
+        return {}
+    if mat_name in alloys:
+        return alloys[mat_name] or {}
+    up = str(mat_name).upper()
+    for k, v in alloys.items():
+        if str(k).upper() == up:
+            return v or {}
+    return {}
+
+
+def _material_boiling_C(mat_name: str, default: float = 2862.0) -> float:
+    """Boiling point [C] of the deposit alloy, or the steel default."""
+    val = _param_float(_material_db_entry(mat_name), "boiling_point", None)
+    if val and val > 200.0:
+        return val
+    try:
+        from core.multimaterial.alloy_metallurgy import get_alloy_category
+        cat = get_alloy_category(mat_name)
+    except Exception:
+        cat = ""
+    return {"Titanium Alloy": 3287.0,
+            "Nickel Superalloy": 2913.0,
+            "Aluminium Alloy": 2519.0}.get(cat, default)
+
+
+def _material_yield_MPa(mat_name: str, default: float = 450.0) -> float:
+    """Room-temperature yield strength [MPa] of the deposit alloy."""
+    entry = _material_db_entry(mat_name)
+    ys = entry.get("yield_strength") or {}
+    sig = ys.get("sigma_y") if isinstance(ys, dict) else None
+    if sig:
+        try:
+            val = float(sig[0])
+            # material_database stores strengths in Pa; the callers of this
+            # helper want MPa.
+            return val / 1.0e6 if val > 1.0e5 else val
+        except (TypeError, ValueError, IndexError):
+            pass
+    try:
+        from core.multimaterial.alloy_metallurgy import get_alloy_category
+        cat = get_alloy_category(mat_name)
+    except Exception:
+        cat = ""
+    return {"Aluminium Alloy": 150.0, "Titanium Alloy": 880.0}.get(cat, default)
+
+
+def _build_layer_history_rows(run_dir: str) -> tuple:
+    """Build the per-layer thermal-history table from the solver's waam_data.csv.
+
+    Returns (html_rows, note). The CSV is written by the generated .edp and holds
+    time_s,layer,phase,Tmax_C,Tpeak_max_C per saved frame, so every number below is
+    measured. If the CSV is missing or unparsable we emit an explicit placeholder
+    rather than fabricating a plausible-looking table.
+    """
+    import os as _os
+
+    candidates = [
+        _os.path.join(run_dir, "waam_data.csv"),
+        _os.path.join(run_dir, "FreeFEM", "waam_data.csv"),
+    ]
+    csv_path = next((c for c in candidates if _os.path.exists(c)), None)
+    if csv_path is None:
+        return ("<tr><td colspan='5'>No thermal history available "
+                "(waam_data.csv not found).</td></tr>",
+                "Per-layer thermal history requires waam_data.csv from the solver run.")
+
+    # Column positions come from the HEADER ROW, not from fixed indexes: a
+    # reordered or extended waam_data.csv used to shift every column (the old
+    # code hard-indexed 5 -> Tmax and 7 -> HV, so any header change silently
+    # mislabelled the data).
+    agg = {}
+    header_note = ""
+    try:
+        with open(csv_path, "r", encoding="utf-8") as f:
+            header = None
+            col = {}
+            for line in f:
+                parts = [p.strip() for p in line.split(",")]
+                if not any(parts):
+                    continue
+                if header is None:
+                    header = [h.strip() for h in parts]
+                    # Real solver header (see EDPBuilder.build):
+                    # time_s,layer,phase,xTorch_mm,zLayer_mm,Tmax_C,
+                    # Tpeak_max_C,HV_layer
+                    want = {"time_s": "time_s", "layer": "layer",
+                            "Tmax_C": "Tmax_C", "HV": "HV_layer"}
+                    for logical, name in want.items():
+                        if name in header:
+                            col[logical] = header.index(name)
+                    if "time_s" not in col or "layer" not in col:
+                        header_note = ("waam_data.csv header lacks time_s/layer; "
+                                       "history table omitted.")
+                        break
+                    continue
+                try:
+                    t_s = float(parts[col["time_s"]])
+                    layer = int(float(parts[col["layer"]]))
+                    tmax = (float(parts[col["Tmax_C"]])
+                            if "Tmax_C" in col else float("nan"))
+                except (ValueError, IndexError):
+                    continue
+                import math as _math
+                if _math.isnan(tmax):
+                    continue
+                rec = agg.setdefault(layer, {"t0": t_s, "tmax": tmax, "tend": t_s,
+                                             "tmin": tmax, "hv": None})
+                rec["tmax"] = max(rec["tmax"], tmax)
+                rec["tmin"] = min(rec["tmin"], tmax)
+                rec["tend"] = t_s
+                if "HV" in col:
+                    try:
+                        rec["hv"] = float(parts[col["HV"]])
+                    except (ValueError, IndexError):
+                        pass
+    except OSError:
+        return ("<tr><td colspan='5'>Could not read waam_data.csv.</td></tr>",
+                "Per-layer thermal history requires waam_data.csv from the solver run.")
+    if header_note and not agg:
+        return ("<tr><td colspan='5'>waam_data.csv header lacks time_s/layer.</td></tr>",
+                header_note)
+
+    if not agg:
+        return ("<tr><td colspan='5'>waam_data.csv contained no usable rows.</td></tr>",
+                "Per-layer thermal history requires waam_data.csv from the solver run.")
+
+    rows = []
+    for layer in sorted(agg):
+        r = agg[layer]
+        # "Interpass" here is the coolest Tmax sampled while THIS layer was the
+        # active one -- the closest the CSV gets to the state the next pass
+        # starts from. It is NOT a dedicated interpass measurement (the solver
+        # writes those rows with phase=INTERPASS into the same file).
+        inter = f"{r['tmin']:.1f}"
+        rows.append(
+            "<tr>"
+            f"<td>Layer {layer}</td>"
+            f"<td>{r['tmax']:.1f}</td>"
+            f"<td>{r['tmin']:.1f}</td>"
+            f"<td>{r['tend']:.1f}</td>"
+            f"<td>{inter}</td>"
+            "</tr>"
+        )
+    note = ("T_max / T_min / T_end are read directly from the solver's "
+            f"waam_data.csv ({_os.path.basename(csv_path)}).")
+    return ("\n".join(rows), note)
+
+
 def generate_enhanced_html_report(run_dir: str, params: dict, summary: dict, plot_paths: list = None) -> str:
     import base64
     import os
     import json
     import glob
+    import datetime
 
     run_dir = os.path.abspath(run_dir)
     plots = plot_paths if plot_paths else glob.glob(os.path.join(run_dir, "plots", "*.png"))
+    if not plots:
+        plots = glob.glob(os.path.join(run_dir, "*.png"))
     
-    # Base64 encode plots
-    encoded_plots = ""
-    for p in plots:
+    # Base64 encode plots into structured cards
+    plot_cards = []
+    for p in sorted(plots):
         try:
+            bname = os.path.basename(p)
+            clean_title = bname.replace(".png", "").replace("_", " ").title()
             with open(p, "rb") as img_f:
                 b64 = base64.b64encode(img_f.read()).decode('utf-8')
-                encoded_plots += f'<div class="plot-container"><img src="data:image/png;base64,{b64}" alt="Post-processing plot" style="width:100%; border:1px solid #ccc; margin-bottom:15px;"/></div>'
+            plot_cards.append(f'''
+            <div class="plot-card">
+                <div class="plot-card-header">{clean_title}</div>
+                <div class="plot-img-wrap">
+                    <img src="data:image/png;base64,{b64}" alt="{clean_title}" loading="lazy"/>
+                </div>
+                <div class="plot-caption">{bname}</div>
+            </div>''')
         except Exception:
             pass
+    encoded_plots = "\n".join(plot_cards) if plot_cards else '<p style="color:#64748b; font-style:italic;">No 2D post-processing plots generated yet.</p>'
 
     # Read sim data
     res = summary.get("simulation_results", {})
-    t_peak = res.get("peak_temperature", "N/A")
-    dist = res.get("max_distortion", "N/A")
-    stress = res.get("max_von_mises", "N/A")
+    converged = res.get("mechanics_converged", None)
+    t_peak = res.get("max_peak_temp_C", None)
+    dist = res.get("max_distortion_mm", None)
+    stress = res.get("max_von_mises_stress_MPa", None)
 
-    # Construct the HTML
+    def _fmt(v, unit=""):
+        if v is None:
+            return ("not reported - mechanical equilibrium did not converge"
+                    if converged is False else "N/A")
+        return f"{v}{unit}"
+
+    t_peak_s = _fmt(t_peak)
+    dist_s = _fmt(dist)
+    stress_s = _fmt(stress)
+
+    conv_note = ""
+    if converged is False:
+        conv_note = (
+            '<div class="alert-box alert-warning">'
+            '<strong>Warning:</strong> the structural equilibrium solve did not converge, '
+            'so distortion and residual stress are withheld rather than reported. '
+            'See the physics flags in run_summary.json.</div>')
+
+    # Real per-layer thermal history from waam_data.csv (written by the solver).
+    per_layer_html, per_layer_note = _build_layer_history_rows(run_dir)
+
+    # Metadata extraction
+    case_name = os.path.basename(os.path.dirname(run_dir)) if os.path.basename(run_dir) in ("FreeFEM", "plots") else os.path.basename(run_dir)
+    mat_dep = params.get("material_dep", params.get("material", "SS308L"))
+    mat_base = params.get("material_base", "SS316L")
+    n_layers_val = params.get("n_layers", "N/A")
+    timestamp_str = datetime.datetime.now().strftime("%B %d, %Y - %H:%M:%S")
+
+    # Construct robust, non-breaking print-safe HTML
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>WAAM Multi-Physics Engineering Report</title>
-    <!-- Use basic CSS for latex-like 2 column layout -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WAAM Multi-Physics Engineering Report — {case_name}</title>
     <style>
-        body {{
-            font-family: "Latin Modern Roman", "Times New Roman", Times, serif;
-            line-height: 1.6;
-            color: #000;
+        @page {{
+            size: A4 portrait;
+            margin: 15mm 15mm 15mm 15mm;
+        }}
+        * {{
+            box-sizing: border-box;
             margin: 0;
-            padding: 20px;
-            background: #fff;
+            padding: 0;
         }}
-        .page {{
-            max-width: 1200px;
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.5;
+            color: #0f172a;
+            background: #f1f5f9;
+            padding: 24px;
+            font-size: 13px;
+        }}
+        .report-container {{
+            max-width: 1100px;
             margin: 0 auto;
-            column-count: 2;
-            column-gap: 40px;
-            text-align: justify;
+            background: #ffffff;
+            padding: 36px 40px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+            border-radius: 8px;
         }}
-        h1, h2, h3 {{
-            text-align: left;
-            column-span: all;
-            border-bottom: 1px solid #000;
-            padding-bottom: 5px;
+        .report-header {{
+            border-bottom: 2px solid #0f172a;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
         }}
-        h1 {{ text-align: center; font-size: 24px; text-transform: uppercase; }}
-        h2 {{ font-size: 18px; margin-top: 20px; }}
-        .metric-box {{
-            border: 1px solid #000;
-            padding: 10px;
-            margin-bottom: 15px;
-            page-break-inside: avoid;
+        .report-header-text h1 {{
+            font-size: 22px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }}
+        .report-subtitle {{
+            font-size: 12px;
+            color: #475569;
+            margin-top: 4px;
+        }}
+        .report-meta-badges {{
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }}
+        .meta-badge {{
+            background: #e2e8f0;
+            color: #334155;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }}
+        .print-btn {{
+            background: #2563eb;
+            color: #ffffff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(37,99,235,0.2);
+            transition: background 0.2s;
+        }}
+        .print-btn:hover {{
+            background: #1d4ed8;
+        }}
+        h2 {{
+            font-size: 15px;
+            font-weight: 700;
+            color: #0f172a;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 6px;
+            margin-top: 24px;
+            margin-bottom: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        .metrics-grid {{
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }}
+        .metric-card {{
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #2563eb;
+            border-radius: 6px;
+            padding: 14px 16px;
+        }}
+        .metric-card.alert {{
+            border-left-color: #ef4444;
+        }}
+        .metric-card .label {{
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }}
+        .metric-card .val {{
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f172a;
+        }}
+        .alert-box {{
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 12.5px;
+        }}
+        .alert-warning {{
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
         }}
         table {{
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 15px;
-            font-size: 14px;
+            margin-top: 8px;
+            margin-bottom: 12px;
+            font-size: 12px;
         }}
-        th, td {{
-            border: 1px solid #000;
-            padding: 5px;
+        thead {{
+            display: table-header-group;
+        }}
+        th {{
+            background: #f1f5f9;
+            color: #334155;
+            font-weight: 700;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
             text-align: left;
         }}
-        .code-command {{
-            background: #eee;
-            padding: 5px;
-            font-family: monospace;
+        td {{
+            padding: 6px 12px;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }}
+        tbody tr:nth-child(even) {{
+            background: #f8fafc;
+        }}
+        .table-note {{
+            font-size: 11px;
+            color: #64748b;
+            font-style: italic;
+            margin-top: 4px;
+            margin-bottom: 20px;
+        }}
+        .command-card {{
+            background: #0f172a;
+            color: #38bdf8;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            word-break: break-all;
+        }}
+        .copy-pill {{
+            background: #38bdf8;
+            color: #0f172a;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
             cursor: pointer;
-            display: inline-block;
-            border: 1px dashed #333;
+            margin-left: 12px;
+            white-space: nowrap;
+        }}
+        .copy-pill:hover {{
+            background: #7dd3fc;
+        }}
+        .plots-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 18px;
+            margin-top: 14px;
+        }}
+        .plot-card {{
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            display: flex;
+            flex-direction: column;
+        }}
+        .plot-card-header {{
+            background: #f8fafc;
+            padding: 8px 12px;
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #1e293b;
+            border-bottom: 1px solid #e2e8f0;
+        }}
+        .plot-img-wrap {{
+            padding: 8px;
+            background: #ffffff;
+            text-align: center;
+        }}
+        .plot-img-wrap img {{
+            width: 100%;
+            height: auto;
+            max-height: 280px;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+        }}
+        .plot-caption {{
+            font-size: 10px;
+            color: #64748b;
+            padding: 4px 12px 8px;
+            font-style: italic;
+            border-top: 1px solid #f1f5f9;
+            background: #ffffff;
+        }}
+        /* --- Strict print & pagination rules --- */
+        @media print {{
+            body {{
+                background: #ffffff !important;
+                padding: 0 !important;
+                font-size: 11pt !important;
+                color: #000000 !important;
+            }}
+            .report-container {{
+                max-width: 100% !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+            }}
+            .no-print {{
+                display: none !important;
+            }}
+            .print-break-before {{
+                break-before: page !important;
+                page-break-before: always !important;
+            }}
+            .metric-card, .metric-box, table, tr, .plot-card, .command-card {{
+                break-inside: avoid !important;
+                page-break-inside: avoid !important;
+            }}
+            h1, h2, h3 {{
+                break-after: avoid !important;
+                page-break-after: avoid !important;
+            }}
+            .plots-grid {{
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 12px !important;
+            }}
+            .plot-card {{
+                border: 1px solid #94a3b8 !important;
+                box-shadow: none !important;
+                margin-bottom: 10px !important;
+            }}
+            .plot-img-wrap img {{
+                max-height: 240px !important;
+            }}
         }}
     </style>
 </head>
 <body>
-    <h1>WAAM Simulation Report</h1>
-    
-    <div class="page">
-        <h2>1. Global Metrics</h2>
-        <div class="metric-box">
-            <strong>Peak Temperature:</strong> {t_peak} &deg;C<br>
-            <strong>Max Distortion (Warpage):</strong> {dist} mm<br>
-            <strong>Max Von Mises Stress:</strong> {stress} MPa<br>
+    <div class="report-container">
+        <div class="report-header">
+            <div class="report-header-text">
+                <h1>WAAM Simulation Engineering Report</h1>
+                <div class="report-subtitle">Case: <strong>{case_name}</strong> | Generated on {timestamp_str}</div>
+                <div class="report-meta-badges">
+                    <span class="meta-badge">Deposit: {mat_dep}</span>
+                    <span class="meta-badge">Substrate: {mat_base}</span>
+                    <span class="meta-badge">Layers: {n_layers_val}</span>
+                    <span class="meta-badge">Solver: FreeFEM++</span>
+                </div>
+            </div>
+            <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
         </div>
+
+        <h2>1. Global Metrics</h2>
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="label">Peak Temperature</div>
+                <div class="val"><strong>Peak Temperature:</strong> {t_peak_s} &deg;C</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Max Distortion (Warpage)</div>
+                <div class="val"><strong>Max Distortion (Warpage):</strong> {dist_s} mm</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Peak Von Mises Stress</div>
+                <div class="val"><strong>Max Von Mises Stress:</strong> {stress_s} MPa</div>
+            </div>
+        </div>
+        {conv_note}
 
         <h2>2. Thermal History (Layer Profile)</h2>
         <table id="thermal-table">
@@ -416,47 +973,31 @@ def generate_enhanced_html_report(run_dir: str, params: dict, summary: dict, plo
                 </tr>
             </thead>
             <tbody id="thermal-body">
-                <!-- JS will populate this -->
+                {per_layer_html}
             </tbody>
         </table>
+        <p class="table-note">{per_layer_note}</p>
 
         <h2>3. 3D ParaView Post-Processing</h2>
-        <p>Click the command below to copy it to your clipboard. Run it in your terminal to view the 3D results:</p>
-        <div class="code-command" onclick="copyCommand()">
-            paraview --data="{os.path.join(run_dir, 'FreeFEM', 'visual_outputs', 'waam_mech.vtu')}"
+        <p>Run the command below in your terminal to inspect the volumetric multi-physics fields in ParaView:</p>
+        <div class="command-card">
+            <span id="paraview-cmd">paraview --data="{os.path.join(run_dir, 'visual_outputs', 'waam_mech.vtu')}"</span>
+            <button class="copy-pill no-print" onclick="copyCommand()">Copy Command</button>
         </div>
-        <p><em>(Or open the .pvd file for animation)</em></p>
 
-        <h2>4. Python Post-Processing Plots</h2>
-        {encoded_plots}
+        <h2 class="print-break-before">4. Python Post-Processing Plots</h2>
+        <div class="plots-grid">
+            {encoded_plots}
+        </div>
     </div>
 
     <script>
         function copyCommand() {{
-            const cmd = `paraview --data="{os.path.join(run_dir, 'FreeFEM', 'visual_outputs', 'waam_mech.vtu')}"`;
+            const cmd = document.getElementById('paraview-cmd').innerText;
             navigator.clipboard.writeText(cmd).then(() => {{
-                alert("Command copied to clipboard!");
+                alert("ParaView command copied to clipboard!");
             }});
         }}
-
-        // Generate synthetic thermal history for JS dynamic population
-        const tbody = document.getElementById("thermal-body");
-        const nLayers = {params.get("layers", 1)};
-        let html = "";
-        for (let i = 1; i <= nLayers; i++) {{
-            let tMax = 1500 + Math.random() * 200;
-            let tMin = 25 + Math.random() * 50;
-            let tEnd = 200 + Math.random() * 100;
-            let inter = tEnd - 10;
-            html += `<tr>
-                <td>Layer ${{i}} (t=${{i * 60}}s)</td>
-                <td>${{tMax.toFixed(1)}}</td>
-                <td>${{tMin.toFixed(1)}}</td>
-                <td>${{tEnd.toFixed(1)}}</td>
-                <td>${{inter.toFixed(1)}}</td>
-            </tr>`;
-        }}
-        tbody.innerHTML = html;
     </script>
 </body>
 </html>
@@ -592,6 +1133,34 @@ def generate_cfd_html_report(foam_dir: str) -> str:
   ul.notes {{ margin-left: 18px; font-size: 13px; color: #334155; }}
   ul.notes li {{ margin-bottom: 4px; }}
   footer {{ text-align: center; font-size: 12px; color: #64748b; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; }}
+  @page {{
+    size: A4 portrait;
+    margin: 15mm;
+  }}
+  @media print {{
+    body {{
+      background: #ffffff !important;
+      padding: 0 !important;
+      color: #000000 !important;
+      font-size: 11pt !important;
+    }}
+    .container {{
+      max-width: 100% !important;
+      width: 100% !important;
+      margin: 0 !important;
+    }}
+    .header, .card, .stat-card, .plot-card, tr {{
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }}
+    .card h2, .card h3 {{
+      break-after: avoid !important;
+      page-break-after: avoid !important;
+    }}
+    table {{
+      page-break-inside: auto !important;
+    }}
+  }}
 </style>
 </head>
 <body>

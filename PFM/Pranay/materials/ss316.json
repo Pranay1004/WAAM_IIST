@@ -1,0 +1,47 @@
+{
+  "alloy_name": "SS316 (AISI 316L / AWS ER316L)",
+  "composition": "Fe-17.0Cr-12.0Ni-2.5Mo-1.5Mn-0.6Si-0.03C (wt%)",
+  "base_metal": "Fe",
+  "solidification_mode": "AF / FA (Austenite-Ferrite Borderline / Primary Austenite)",
+  "calphad_database": "TCFE9 / Thermo-Calc Validated",
+  "Cr_eq_wt_pct": 20.4,
+  "Ni_eq_wt_pct": 14.6,
+  "Cr_eq_to_Ni_eq": 1.40,
+  "thermodynamics": {
+    "T_liquidus_K": 1695.0,
+    "T_solidus_K": 1645.0,
+    "delta_T0_K": 50.0,
+    "T_interpass_K": 523.0,
+    "latent_heat_J_kg": 265000.0,
+    "specific_heat_J_kg_K": 670.0,
+    "density_liquid_kg_m3": 6950.0,
+    "thermal_diffusivity_m2_s": 4.4e-6,
+    "interfacial_energy_J_m2": 0.34,
+    "molar_volume_m3_mol": 7.42e-6
+  },
+  "calphad_partitioning": {
+    "k_Cr": 0.82,
+    "k_Ni": 0.96,
+    "k_Mo": 0.62,
+    "liquidus_slope_Cr_K_wt": -4.1,
+    "liquidus_slope_Ni_K_wt": -2.6,
+    "liquidus_slope_Mo_K_wt": -6.8,
+    "hessian_liquid_J_mol": 47800.0,
+    "hessian_delta_J_mol": 51200.0,
+    "hessian_gamma_J_mol": 55400.0
+  },
+  "acoustics": {
+    "sound_speed_liquid_m_s": 4120.0,
+    "blake_threshold_mpa": 0.68,
+    "attenuation_coeff_Np_m": 0.14,
+    "viscosity_liquid_Pa_s": 0.0062
+  },
+  "solid_state_kinetics": {
+    "transformation_start_T_K": 1630.0,
+    "transformation_end_T_K": 1100.0,
+    "freeze_diffusion_T_K": 1020.0,
+    "target_austenite_fraction": 0.965,
+    "target_ferrite_fraction": 0.035,
+    "target_ferrite_number_FN": 3.7
+  }
+}

@@ -1,16 +1,38 @@
 """
-CAD importer: STEP/IGES → Gmsh → FreeFEM .mesh
+CAD importer: STEP/IGES/BREP → fused-domain FreeFEM .mesh.
 
-Uses the Gmsh Python API to import CAD geometry, mesh it with
-3D tetrahedra, assign physical groups, and export to INRIA .mesh
-format for FreeFEM's readmesh3().
+STEP/IGES/BREP files are imported with the Gmsh OCC kernel, their surface skin
+is exported to a temporary STL, and mesh/stl_pipeline.stl_to_freefem_mesh()
+builds the SOLVER domain from it: substrate plate fused with the part into ONE
+conformal tetrahedral volume, with the boundary labels the generated .edp
+expects (see mesh/structured_conforming._BOUNDARY_LABEL set B):
+
+    1 -> substrate underside (hBot + fixture spring)
+    5 -> top, 2 -> every other surface (all convective)
+
+The previous implementation meshed ONLY the imported part and tagged it with
+its own private scheme (surfaces 1/2/3, volume 10). None of those labels exist
+in the solver's forms, so convection, radiation, base transfer and the fixture
+spring integrated over the wrong sets -- and the part was later glued onto a
+separate plate with `Th = ThBase + ThCad`, an interface FreeFEM never merges
+(zero-width crack: no conduction, no mechanical bond). Both failure modes are
+structurally impossible through the delegated path below.
+
+build_parametric_wall() is kept for API compatibility and now delegates to
+mesh/structured_conforming.generate_waam_mesh (same geometry, correct labels)
+instead of building a second, differently-labelled Gmsh model.
 """
 
-import gmsh
 import json
 import math
+import os
 from pathlib import Path
 from typing import Optional
+
+# Boundary label set shared with mesh/stl_pipeline.py and the solver.
+LABEL_BOTTOM = 1
+LABEL_TOP = 5
+LABEL_SIDE = 2
 
 
 def import_cad_and_mesh(
@@ -22,21 +44,25 @@ def import_cad_and_mesh(
     deposit_z_max: Optional[float] = None,
     refine_deposit: bool = True,
     deposit_mesh_factor: float = 0.5,
-    verbose: bool = True
+    verbose: bool = True,
+    target_nodes: int = 2000,
+    layer_height: float = 3.0,
+    sub_hz_mm: Optional[float] = None,
+    sub_lx_mm: Optional[float] = None,
+    sub_ly_mm: Optional[float] = None,
 ) -> dict:
     """
     Import a CAD file (STEP/IGES/BREP) and generate a 3D tetrahedral mesh.
 
-    Args:
-        cad_file: Path to STEP, IGES, or BREP file
-        output_mesh: Output .mesh file path
-        mesh_size_min: Minimum element size [mm]
-        mesh_size_max: Maximum element size [mm]
-        substrate_z_max: Z-coordinate separating substrate from deposit [mm]
-        deposit_z_max: Z-coordinate of deposit top (auto-detected if None)
-        refine_deposit: Whether to refine mesh in the deposit region
-        deposit_mesh_factor: Mesh size factor for deposit region (0-1)
-        verbose: Print progress messages
+    The OCC import only extracts the part SKIN to a temporary STL; all sizing,
+    unit handling, substrate fusion, labelling and failure reporting are owned
+    by mesh/stl_pipeline.stl_to_freefem_mesh (documented above). The legacy
+    mesh_size_min/max, refine_deposit and deposit_mesh_factor arguments are
+    accepted for compatibility and mapped onto layer_height/target_nodes.
+
+    sub_hz_mm MUST match the solver's hz_base (default 5 mm): the imported
+    substrate_z_max default (15 mm) predates that and is only kept when no
+    explicit sub_hz_mm is given.
 
     Returns:
         Dictionary with mesh statistics and label assignments
@@ -48,167 +74,88 @@ def import_cad_and_mesh(
     suffix = cad_path.suffix.lower()
     supported = {'.step', '.stp', '.iges', '.igs', '.brep'}
     if suffix not in supported:
-        raise ValueError(f"Unsupported format '{suffix}'. Use: {supported}")
+        raise ValueError(f"Unsupported format '{suffix}'. Use: {sorted(supported)}")
 
+    # The substrate plate inside the fused domain uses the solver's hz_base.
+    # The legacy substrate_z_max default (15 mm) is honoured only when the
+    # caller did not pass an explicit sub_hz_mm.
+    plate_hz = float(sub_hz_mm) if sub_hz_mm else float(substrate_z_max)
+    if sub_hz_mm is None and abs(plate_hz - 5.0) > 1e-9 and verbose:
+        print(f"[CAD-IMPORT] NOTE: substrate plate {plate_hz:.1f} mm differs "
+              f"from the solver default hz_base (5 mm). Pass sub_hz_mm "
+              f"explicitly to keep the mesh and the .edp in agreement.")
+
+    import gmsh
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 1 if verbose else 0)
     gmsh.model.add("waam_part")
-
-    # Import CAD
-    if verbose:
-        print(f"Importing CAD: {cad_file}")
-
-    if suffix in ('.step', '.stp'):
+    try:
+        # OCC import; the part skin is triangulated and handed to the fused
+        # domain mesher below (which owns repair, scaling and labelling).
         gmsh.model.occ.importShapes(str(cad_path))
-    elif suffix in ('.iges', '.igs'):
-        gmsh.model.occ.importShapes(str(cad_path))
-    elif suffix == '.brep':
-        gmsh.model.occ.importShapes(str(cad_path))
+        gmsh.model.occ.synchronize()
 
-    gmsh.model.occ.synchronize()
+        volumes = gmsh.model.getEntities(dim=3)
+        if not volumes:
+            raise RuntimeError("No 3D volumes found in CAD file")
 
-    # Get bounding box
-    volumes = gmsh.model.getEntities(dim=3)
-    if not volumes:
-        gmsh.finalize()
-        raise RuntimeError("No 3D volumes found in CAD file")
+        xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.occ.getBoundingBox(
+            volumes[0][0], volumes[0][1])
+        for vol in volumes[1:]:
+            x0, y0, z0, x1, y1, z1 = gmsh.model.occ.getBoundingBox(vol[0], vol[1])
+            xmin, ymin, zmin = min(xmin, x0), min(ymin, y0), min(zmin, z0)
+            xmax, ymax, zmax = max(xmax, x1), max(ymax, y1), max(zmax, z1)
+        if verbose:
+            print(f"Bounding box: [{xmin:.1f},{ymin:.1f},{zmin:.1f}] "
+                  f"to [{xmax:.1f},{ymax:.1f},{zmax:.1f}] (CAD units)")
 
-    xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.occ.getBoundingBox(
-        volumes[0][0], volumes[0][1]
-    )
-    for vol in volumes[1:]:
-        x0, y0, z0, x1, y1, z1 = gmsh.model.occ.getBoundingBox(vol[0], vol[1])
-        xmin, ymin, zmin = min(xmin, x0), min(ymin, y0), min(zmin, z0)
-        xmax, ymax, zmax = max(xmax, x1), max(ymax, y1), max(zmax, z1)
+        # A moderate skin triangulation; the fused-domain mesher re-meshes the
+        # volume to its own sizing afterwards, so this only needs to capture
+        # the shape, not resolve the physics.
+        skin_lc = max(float(mesh_size_max), float(layer_height) * 0.5)
+        gmsh.option.setNumber("Mesh.MeshSizeMin", max(float(mesh_size_min), 0.2))
+        gmsh.option.setNumber("Mesh.MeshSizeMax", skin_lc)
+        gmsh.option.setNumber("Mesh.Algorithm3D", 1)
+        tmp_stl = str(Path(output_mesh).with_suffix("")) + "_cad_skin_tmp.stl"
+        gmsh.model.mesh.generate(2)
+        gmsh.write(tmp_stl)
+    finally:
+        try:
+            gmsh.finalize()
+        except Exception:
+            pass
 
-    if deposit_z_max is None:
-        deposit_z_max = zmax
+    from mesh.stl_pipeline import stl_to_freefem_mesh
+    try:
+        result = stl_to_freefem_mesh(
+            tmp_stl, output_mesh,
+            target_nodes=int(target_nodes),
+            layer_height=float(layer_height),
+            sub_hz_mm=plate_hz,
+            sub_lx_mm=sub_lx_mm, sub_ly_mm=sub_ly_mm,
+        )
+    finally:
+        try:
+            if os.path.exists(tmp_stl):
+                os.remove(tmp_stl)
+        except Exception:
+            pass
 
+    result["cad_file"] = str(cad_path)
+    result["format"] = suffix.upper()[1:]
+    result["cad_bbox"] = {"x": [xmin, xmax], "y": [ymin, ymax], "z": [zmin, zmax]}
     if verbose:
-        print(f"Bounding box: [{xmin:.1f},{ymin:.1f},{zmin:.1f}] "
-              f"to [{xmax:.1f},{ymax:.1f},{zmax:.1f}] mm")
-
-    # Set mesh sizes
-    gmsh.option.setNumber("Mesh.MeshSizeMin", mesh_size_min)
-    gmsh.option.setNumber("Mesh.MeshSizeMax", mesh_size_max)
-    gmsh.option.setNumber("Mesh.Algorithm3D", 1)  # Delaunay
-    gmsh.option.setNumber("Mesh.Optimize", 1)
-    gmsh.option.setNumber("Mesh.OptimizeNetgen", 1)
-
-    # Refine deposit region with a mesh size field
-    if refine_deposit:
-        box_field = gmsh.model.mesh.field.add("Box")
-        gmsh.model.mesh.field.setNumber(box_field, "VIn", mesh_size_min * deposit_mesh_factor)
-        gmsh.model.mesh.field.setNumber(box_field, "VOut", mesh_size_max)
-        gmsh.model.mesh.field.setNumber(box_field, "XMin", xmin)
-        gmsh.model.mesh.field.setNumber(box_field, "XMax", xmax)
-        gmsh.model.mesh.field.setNumber(box_field, "YMin", ymin)
-        gmsh.model.mesh.field.setNumber(box_field, "YMax", ymax)
-        gmsh.model.mesh.field.setNumber(box_field, "ZMin", substrate_z_max)
-        gmsh.model.mesh.field.setNumber(box_field, "ZMax", deposit_z_max)
-        gmsh.model.mesh.field.setAsBackgroundMesh(box_field)
-
-    # Assign physical groups based on z-coordinate
-    # Surfaces: detect boundary faces and classify by position
-    surfaces = gmsh.model.getEntities(dim=2)
-
-    bottom_surfaces = []
-    top_surfaces = []
-    side_surfaces = []
-
-    for surf in surfaces:
-        sx0, sy0, sz0, sx1, sy1, sz1 = gmsh.model.occ.getBoundingBox(surf[0], surf[1])
-        face_zmin = sz0
-        face_zmax = sz1
-        face_dz = face_zmax - face_zmin
-
-        # Bottom face: z ≈ zmin and flat
-        if abs(face_zmin - zmin) < 0.1 and abs(face_dz) < 0.1:
-            bottom_surfaces.append(surf[1])
-        # Top face: z ≈ zmax and flat
-        elif abs(face_zmax - zmax) < 0.1 and abs(face_dz) < 0.1:
-            top_surfaces.append(surf[1])
-        else:
-            side_surfaces.append(surf[1])
-
-    # Create physical groups
-    labels = {}
-    if bottom_surfaces:
-        tag = gmsh.model.addPhysicalGroup(2, bottom_surfaces, tag=1)
-        gmsh.model.setPhysicalName(2, tag, "Bottom_Clamp")
-        labels[1] = "Bottom_Clamp"
-
-    if top_surfaces:
-        tag = gmsh.model.addPhysicalGroup(2, top_surfaces, tag=2)
-        gmsh.model.setPhysicalName(2, tag, "Top_Surface")
-        labels[2] = "Top_Surface"
-
-    if side_surfaces:
-        tag = gmsh.model.addPhysicalGroup(2, side_surfaces, tag=3)
-        gmsh.model.setPhysicalName(2, tag, "Side_Convection")
-        labels[3] = "Side_Convection"
-
-    # Volume physical group
-    vol_tags = [v[1] for v in volumes]
-    vol_group = gmsh.model.addPhysicalGroup(3, vol_tags, tag=10)
-    gmsh.model.setPhysicalName(3, vol_group, "Domain")
-    labels[10] = "Domain"
-
-    # Generate mesh
-    if verbose:
-        print("Generating 3D mesh...")
-    gmsh.model.mesh.generate(3)
-
-    # Get mesh statistics
-    node_tags, _, _ = gmsh.model.mesh.getNodes()
-    elem_types, _, _ = gmsh.model.mesh.getElements(dim=3)
-    n_nodes = len(node_tags)
-    n_elements = sum(len(tags) for _, tags, _ in
-                     [gmsh.model.mesh.getElements(dim=3)])
-
-    if verbose:
-        print(f"Mesh: {n_nodes} nodes, {n_elements} tetrahedra")
-
-    # Export
-    out_path = Path(output_mesh)
-    if out_path.suffix == '.mesh':
-        gmsh.write(str(out_path))
-    elif out_path.suffix == '.msh':
-        gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)
-        gmsh.write(str(out_path))
-    elif out_path.suffix == '.vtu':
-        gmsh.write(str(out_path))
-    else:
-        # Default to .mesh
-        gmsh.write(str(out_path.with_suffix('.mesh')))
-
-    gmsh.finalize()
-
-    stats = {
-        "cad_file": str(cad_path),
-        "output_mesh": str(out_path),
-        "n_nodes": n_nodes,
-        "n_elements": n_elements,
-        "bounding_box": {
-            "x": [xmin, xmax], "y": [ymin, ymax], "z": [zmin, zmax]
-        },
-        "physical_labels": labels,
-        "mesh_size_range": [mesh_size_min, mesh_size_max],
-        "substrate_z_max": substrate_z_max
-    }
-
-    if verbose:
-        print(f"Mesh exported to: {out_path}")
-        print(f"Physical labels: {labels}")
-
-    return stats
+        print(f"CAD domain mesh: {result['n_nodes']:,} nodes, "
+              f"{result['n_tets']:,} tets -> {output_mesh}")
+        print(f"Boundary labels: {result.get('labels')}")
+    return result
 
 
 def build_parametric_wall(
     output_mesh: str,
     lx: float = 150.0,
     ly_base: float = 150.0,
-    hz_base: float = 15.0,
+    hz_base: float = 5.0,
     ty_dep: float = 8.0,
     n_layers: int = 26,
     h_bead: float = 3.0,
@@ -217,117 +164,42 @@ def build_parametric_wall(
     verbose: bool = True
 ) -> dict:
     """
-    Build a parametric WAAM wall geometry (base plate + deposit zone)
-    directly in Gmsh without requiring a CAD file.
+    Build a parametric WAAM wall mesh (base plate + deposit zone).
 
-    This replicates the FreeFEM cube+movemesh3 approach but with
-    proper physical group labels.
+    All dimensions are millimetres, matching the historical signature. The mesh
+    itself is built by mesh/structured_conforming.generate_waam_mesh -- one
+    conformal grid with shared interface nodes and solver-compatible boundary
+    labels -- instead of a second Gmsh model whose private label scheme
+    (volumes 1/2, surfaces 10/11/12) matched nothing the solver integrates.
 
     Returns:
         Dictionary with mesh statistics and label assignments
     """
-    gmsh.initialize()
-    gmsh.option.setNumber("General.Terminal", 1 if verbose else 0)
-    gmsh.model.add("waam_wall")
-
-    hz_dep = n_layers * h_bead
-    y_centre = ly_base / 2.0
-    y_left = y_centre - ty_dep / 2.0
-    y_right = y_centre + ty_dep / 2.0
-
-    # Create base plate box
-    base = gmsh.model.occ.addBox(0, 0, 0, lx, ly_base, hz_base)
-
-    # Create deposit zone box
-    dep = gmsh.model.occ.addBox(0, y_left, hz_base, lx, ty_dep, hz_dep)
-
-    # Fragment (merge shared faces)
-    out_dimtags, out_map = gmsh.model.occ.fragment(
-        [(3, base)], [(3, dep)]
+    from mesh.structured_conforming import generate_waam_mesh
+    hz_dep = float(n_layers) * float(h_bead) / 1000.0
+    info = generate_waam_mesh(
+        output_mesh,
+        lx=float(lx) / 1000.0, ly_base=float(ly_base) / 1000.0,
+        hz_base=float(hz_base) / 1000.0, ty_dep=float(ty_dep) / 1000.0,
+        hz_dep=hz_dep,
+        nx_dep=int(nx_dep), ny_dep=int(ny_dep), nz_dep=int(nz_dep),
+        nx_base=int(nx_base), ny_base=int(ny_base), nz_base=int(nz_base),
     )
-    gmsh.model.occ.synchronize()
-
-    # Identify volumes
-    all_vols = gmsh.model.getEntities(dim=3)
-
-    substrate_vols = []
-    deposit_vols = []
-    for vol in all_vols:
-        x0, y0, z0, x1, y1, z1 = gmsh.model.occ.getBoundingBox(vol[0], vol[1])
-        z_mid = (z0 + z1) / 2.0
-        if z_mid < hz_base + 0.1:
-            substrate_vols.append(vol[1])
-        else:
-            deposit_vols.append(vol[1])
-
-    # Physical volumes
-    if substrate_vols:
-        gmsh.model.addPhysicalGroup(3, substrate_vols, tag=1)
-        gmsh.model.setPhysicalName(3, 1, "Substrate")
-    if deposit_vols:
-        gmsh.model.addPhysicalGroup(3, deposit_vols, tag=2)
-        gmsh.model.setPhysicalName(3, 2, "Deposit")
-
-    # Identify boundary surfaces
-    all_surfs = gmsh.model.getEntities(dim=2)
-    bottom_s, top_s, side_s = [], [], []
-
-    for surf in all_surfs:
-        x0, y0, z0, x1, y1, z1 = gmsh.model.occ.getBoundingBox(surf[0], surf[1])
-        dz = abs(z1 - z0)
-        if abs(z0) < 0.01 and dz < 0.01:
-            bottom_s.append(surf[1])
-        elif abs(z1 - (hz_base + hz_dep)) < 0.1 and dz < 0.1:
-            top_s.append(surf[1])
-        elif abs(z0 - hz_base) < 0.01 and dz < 0.01:
-            pass  # Internal interface
-        else:
-            # Check if it's a boundary surface (not internal)
-            up, down = gmsh.model.getAdjacencies(surf[0], surf[1])
-            if len(up) <= 1:  # Only one adjacent volume = boundary
-                side_s.append(surf[1])
-
-    if bottom_s:
-        gmsh.model.addPhysicalGroup(2, bottom_s, tag=10)
-        gmsh.model.setPhysicalName(2, 10, "Bottom_Clamp")
-    if top_s:
-        gmsh.model.addPhysicalGroup(2, top_s, tag=11)
-        gmsh.model.setPhysicalName(2, 11, "Top_Surface")
-    if side_s:
-        gmsh.model.addPhysicalGroup(2, side_s, tag=12)
-        gmsh.model.setPhysicalName(2, 12, "Side_Surfaces")
-
-    # Mesh sizing
-    gmsh.option.setNumber("Mesh.MeshSizeMin", 0.5)
-    gmsh.option.setNumber("Mesh.MeshSizeMax", max(lx/nx_base, ly_base/ny_base, hz_base/nz_base))
-
-    # Generate mesh
-    gmsh.model.mesh.generate(3)
-
-    node_tags, _, _ = gmsh.model.mesh.getNodes()
-    n_nodes = len(node_tags)
-
-    # Export
-    out_path = Path(output_mesh)
-    if out_path.suffix == '.msh':
-        gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)
-    gmsh.write(str(out_path))
-
-    gmsh.finalize()
-
     stats = {
-        "output_mesh": str(out_path),
-        "n_nodes": n_nodes,
+        "output_mesh": str(output_mesh),
+        "n_nodes": info["n_nodes"],
+        "n_tets": info["n_tets"],
+        "boundary_faces_by_label": info.get("boundary_faces_by_label", {}),
         "geometry": {
             "lx": lx, "ly_base": ly_base, "hz_base": hz_base,
             "ty_dep": ty_dep, "n_layers": n_layers, "h_bead": h_bead,
-            "hz_dep": hz_dep
-        }
+            "hz_dep": hz_dep * 1000.0,
+        },
     }
-
     if verbose:
-        print(f"Parametric wall mesh: {n_nodes} nodes → {out_path}")
-
+        print(f"Parametric wall mesh: {info['n_nodes']:,} nodes, "
+              f"{info['n_tets']:,} tets -> {output_mesh}")
+        print(f"Boundary labels: {stats['boundary_faces_by_label']}")
     return stats
 
 

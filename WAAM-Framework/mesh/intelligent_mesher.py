@@ -32,19 +32,29 @@ def calculate_intelligent_structured_mesh(params: dict, target_nodes: int = 2000
     Intelligently assigns Nx, Ny, Nz divisions for substrate and deposit wall
     based on geometric aspect ratios and physics gradient rules.
     """
-    def get_dim_mm(key, default_val):
-        val = float(params.get(key, default_val))
-        return val * 1000.0 if val < 1.0 else val
+    from mesh.units import dim_to_m
+    unit_warnings: list = []
 
-    lx = max(get_dim_mm("lx", 150.0), 1.0)           # mm
-    ly_base = max(get_dim_mm("ly_base", 150.0), 1.0) # mm
-    hz_base = max(get_dim_mm("hz_base", 15.0), 1.0)  # mm
-    ty_dep = max(get_dim_mm("ty_dep", 8.0), 0.5)     # mm
-    h_bead_first = max(get_dim_mm("h_bead_first", get_dim_mm("h_bead", 4.0)), 0.5)  # mm
+    def get_dim_mm(key, default_si):
+        # Accepts SI (solver) or mm (GUI) and normalises to mm. The previous
+        # rule (`< 1.0 means metres`) contradicted the OpenFOAM rule
+        # (`> 1.0 means mm`) and silently rescaled every legitimate
+        # sub-millimetre SI value by x1000; both now share one threshold table
+        # in mesh/units.py.
+        v_m = dim_to_m(params.get(key, default_si), key,
+                       warn=unit_warnings.append)
+        return v_m * 1000.0
+
+    lx = max(get_dim_mm("lx", 0.150), 1.0)           # mm
+    ly_base = max(get_dim_mm("ly_base", 0.150), 1.0)  # mm
+    hz_base = max(get_dim_mm("hz_base", 0.005), 1.0)  # mm
+    ty_dep = max(get_dim_mm("ty_dep", 0.008), 0.5)    # mm
+    h_bead_first = max(get_dim_mm("h_bead_first",
+                                  float(params.get("h_bead", 0.004))), 0.5)  # mm
     remelt_ratio = float(params.get("remelt_ratio", 0.80))
-    h_bead_subseq = max(float(params.get("h_bead_subseq", h_bead_first * remelt_ratio)), 0.1)
-    if h_bead_subseq < 0.1:
-        h_bead_subseq *= 1000.0
+    h_bead_subseq = get_dim_mm(
+        "h_bead_subseq", h_bead_first / 1000.0 * remelt_ratio)  # mm
+    h_bead_subseq = max(h_bead_subseq, 0.1)
     n_layers = max(int(float(params.get("n_layers", 10))), 1)
     hz_dep = h_bead_first if n_layers <= 1 else (h_bead_first + (n_layers - 1) * h_bead_subseq)  # mm
 
@@ -113,9 +123,54 @@ def calculate_intelligent_structured_mesh(params: dict, target_nodes: int = 2000
     dz_base = hz_base / nz_base
     ar_base = max(dx_base, dy_base, dz_base) / max(min(dx_base, dy_base, dz_base), 1e-4)
 
-    tot_nodes = (nx_dep + 1) * (ny_dep + 1) * (nz_dep + 1) + (nx_base + 1) * (ny_base + 1) * (nz_base + 1)
+    # The deposit footprint shares its bottom nodes with the plate top: those
+    # (nx_dep+1)*(ny_dep+1) nodes were counted in BOTH blocks, inflating the
+    # estimate. Subtract them once (an estimate -- exact only when the Y grids
+    # align, as in mesh/structured_conforming).
+    shared_interface = (nx_dep + 1) * (ny_dep + 1)
+    tot_nodes = ((nx_dep + 1) * (ny_dep + 1) * (nz_dep + 1)
+                 + (nx_base + 1) * (ny_base + 1) * (nz_base + 1)
+                 - shared_interface)
     tot_hex = (nx_dep * ny_dep * nz_dep) + (nx_base * ny_base * nz_base)
     tot_tets = tot_hex * 6
+
+    # The module docstring promises aspect ratio <= 2.5; enforce it instead of
+    # merely reporting it. Refine the coarsest axis until both blocks comply
+    # (bounded loop; a warning records when the budget had to give).
+    aspect_cap = 2.5
+    for _ in range(64):
+        worst = max(ar_dep, ar_base)
+        if worst <= aspect_cap:
+            break
+        if ar_dep >= ar_base:
+            if dx_dep >= dy_dep and dx_dep >= dz_dep:
+                nx_dep += 1; dx_dep = lx / nx_dep
+            elif dy_dep >= dz_dep:
+                ny_dep += 1; dy_dep = ty_dep / ny_dep
+            else:
+                nz_dep += 1; dz_dep = hz_dep / nz_dep
+            ar_dep = (max(dx_dep, dy_dep, dz_dep)
+                      / max(min(dx_dep, dy_dep, dz_dep), 1e-4))
+        else:
+            if dx_base >= dy_base and dx_base >= dz_base:
+                nx_base += 1; dx_base = lx / nx_base
+            elif dy_base >= dz_base:
+                ny_base += 1; dy_base = ly_base / ny_base
+            else:
+                nz_base += 1; dz_base = hz_base / nz_base
+            ar_base = (max(dx_base, dy_base, dz_base)
+                       / max(min(dx_base, dy_base, dz_base), 1e-4))
+        shared_interface = (nx_dep + 1) * (ny_dep + 1)
+        tot_nodes = ((nx_dep + 1) * (ny_dep + 1) * (nz_dep + 1)
+                     + (nx_base + 1) * (ny_base + 1) * (nz_base + 1)
+                     - shared_interface)
+        tot_hex = (nx_dep * ny_dep * nz_dep) + (nx_base * ny_base * nz_base)
+        tot_tets = tot_hex * 6
+    if max(ar_dep, ar_base) > aspect_cap:
+        unit_warnings.append(
+            f"aspect ratio {max(ar_dep, ar_base):.2f} exceeds the {aspect_cap} "
+            f"cap even after refinement; results on stretched elements "
+            f"need a mesh-sensitivity check.")
 
     return {
         "nx_dep": int(nx_dep), "ny_dep": int(ny_dep), "nz_dep": int(nz_dep),
@@ -123,22 +178,42 @@ def calculate_intelligent_structured_mesh(params: dict, target_nodes: int = 2000
         "total_nodes": int(tot_nodes), "total_hex": int(tot_hex), "total_tets": int(tot_tets),
         "dx_dep": dx_dep, "dy_dep": dy_dep, "dz_dep": dz_dep, "aspect_ratio_dep": ar_dep,
         "dx_base": dx_base, "dy_base": dy_base, "dz_base": dz_base, "aspect_ratio_base": ar_base,
-        "strategy": strategy, "target_budget": target_nodes
+        "strategy": strategy, "target_budget": target_nodes,
+        "warnings": list(unit_warnings),
     }
 
 
 def import_and_mesh_cad_intelligent(cad_path: str, output_mesh_path: str = None,
                                    target_nodes: int = 2000,
-                                   refine_thin_features: bool = True) -> dict:
+                                   refine_thin_features: bool = True,
+                                   layer_height: float = None,
+                                   sub_hz_mm: float = None,
+                                   sub_lx_mm: float = None,
+                                   sub_ly_mm: float = None) -> dict:
     """
     Intelligently imports any CAD format (.stl, .step, .stp, .iges, .igs)
     and meshes it with curvature and feature-adaptive rules.
+
+    sub_hz_mm / sub_lx_mm / sub_ly_mm MUST match the solver's hz_base / lx /
+    ly_base (the generated .edp treats everything at z <= HzBase as substrate):
+    they are forwarded verbatim to mesh/stl_pipeline.stl_to_freefem_mesh, whose
+    own defaults (5 / 150 / 150 mm) otherwise apply. layer_height drives the
+    near-part element size.
     """
     import trimesh
     import gmsh
 
     cad_path = str(Path(cad_path).resolve())
     suffix = Path(cad_path).suffix.lower()
+    _pipe_kwargs = dict(target_nodes=target_nodes)
+    if layer_height is not None:
+        _pipe_kwargs["layer_height"] = float(layer_height)
+    if sub_hz_mm is not None:
+        _pipe_kwargs["sub_hz_mm"] = float(sub_hz_mm)
+    if sub_lx_mm is not None:
+        _pipe_kwargs["sub_lx_mm"] = float(sub_lx_mm)
+    if sub_ly_mm is not None:
+        _pipe_kwargs["sub_ly_mm"] = float(sub_ly_mm)
 
     if output_mesh_path is None:
         outdir = "./waam_output"
@@ -194,7 +269,7 @@ def import_and_mesh_cad_intelligent(cad_path: str, output_mesh_path: str = None,
 
         # Step 3: Mesh volume from watertight repaired surface
         from mesh.stl_pipeline import stl_to_freefem_mesh
-        result = stl_to_freefem_mesh(tmp_surf_stl, output_mesh_path, target_nodes=target_nodes)
+        result = stl_to_freefem_mesh(tmp_surf_stl, output_mesh_path, **_pipe_kwargs)
 
         try:
             os.remove(tmp_surf_stl)
@@ -213,10 +288,59 @@ def import_and_mesh_cad_intelligent(cad_path: str, output_mesh_path: str = None,
     # 2. STL Pipeline
     elif suffix in ('.stl', '.ply', '.obj'):
         from mesh.stl_pipeline import stl_to_freefem_mesh
-        result = stl_to_freefem_mesh(cad_path, output_mesh_path, target_nodes=target_nodes)
+        result = stl_to_freefem_mesh(cad_path, output_mesh_path, **_pipe_kwargs)
         result["cad_file"] = cad_path
         result["format"] = "STL"
         return result
+
+    # 3. Direct FreeFEM / Medit 3D Mesh
+    elif suffix == '.mesh':
+        n_nodes = 0
+        n_tets = 0
+        coords = []
+        with open(cad_path, 'r', errors='ignore') as f:
+            lines = f.readlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if line == "Vertices" and i + 1 < len(lines):
+                try:
+                    n_nodes = int(lines[i+1].strip())
+                    for j in range(min(n_nodes, 100000)):
+                        parts = lines[i+2+j].split()
+                        if len(parts) >= 3:
+                            coords.append((float(parts[0]), float(parts[1]), float(parts[2])))
+                except Exception:
+                    pass
+                i += 2 + n_nodes
+            elif line == "Tetrahedra" and i + 1 < len(lines):
+                try:
+                    n_tets = int(lines[i+1].strip())
+                except Exception:
+                    pass
+                break
+            i += 1
+        if coords:
+            xs = [c[0] for c in coords]
+            ys = [c[1] for c in coords]
+            zs = [c[2] for c in coords]
+            bbox = (min(xs), min(ys), min(zs), max(xs), max(ys), max(zs))
+        else:
+            bbox = (0, 0, 0, 100, 100, 10)
+        spans = (bbox[3] - bbox[0], bbox[4] - bbox[1], bbox[5] - bbox[2])
+        return {
+            "mesh_path": cad_path,
+            "cad_file": cad_path,
+            "format": "MESH",
+            "n_nodes": n_nodes,
+            "n_tets": n_tets,
+            "bbox_mm": {
+                "x": float(spans[0]), "y": float(spans[1]), "z": float(spans[2]),
+                "xmin": float(bbox[0]), "ymin": float(bbox[1]), "zmin": float(bbox[2]),
+                "xmax": float(bbox[3]), "ymax": float(bbox[4]), "zmax": float(bbox[5])
+            },
+            "warnings": [f"[MESH-DIRECT] Loaded existing volume mesh: {n_nodes:,} nodes, {n_tets:,} tets."]
+        }
 
     else:
         raise ValueError(f"Unsupported CAD format: {suffix}")

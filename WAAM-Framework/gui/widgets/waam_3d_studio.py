@@ -166,6 +166,42 @@ def generate_waam_3d_studio_html(
                 "f": v_scan_mm_s * 60.0, "layer": lay + 1, "type": "G1", "dep": True
             })
 
+    # Custom CAD Geometry extraction for WebGL Studio
+    cad_mesh_payload = None
+    cad_src = params.get("stl_file") or params.get("mesh_file")
+    if cad_src and os.path.exists(cad_src):
+        if str(cad_src).lower().endswith(('.mesh', '.mesh3')):
+            cstem = Path(cad_src).stem
+            if cstem.startswith("imported_"):
+                cstem = cstem[len("imported_"):]
+            for cfld in [Path(cad_src).parent, Path("./stl"), Path(__file__).resolve().parent.parent.parent / "stl"]:
+                for cext in ('.stl', '.ply', '.obj', '.step', '.stp'):
+                    cand = cfld / (cstem + cext)
+                    if cand.exists():
+                        cad_src = str(cand)
+                        break
+                if str(cad_src).lower().endswith(('.stl', '.ply', '.obj', '.step', '.stp')):
+                    break
+
+        if str(cad_src).lower().endswith(('.stl', '.step', '.stp', '.iges', '.igs', '.ply', '.obj')):
+            try:
+                from gui.widgets.mesh_viewer_3d import load_any_cad_geometry
+                v_cad, f_cad, c_info = load_any_cad_geometry(cad_src, sub_hz_mm=hz_base)
+                if v_cad is not None and f_cad is not None:
+                    import numpy as _np
+                    if len(f_cad) > 4000:
+                        step = len(f_cad) // 3000 + 1
+                        f_sub = f_cad[::step]
+                    else:
+                        f_sub = f_cad
+                    cad_mesh_payload = {
+                        "vertices": _np.round(v_cad, 3).tolist(),
+                        "faces": f_sub.tolist(),
+                        "name": os.path.basename(cad_src)
+                    }
+            except Exception as ce:
+                print(f"[WAAM 3D Studio] CAD load notice: {ce}")
+
     # Prepare JSON payload for the Three.js app
     studio_data = {
         "lx": lx,
@@ -199,6 +235,7 @@ def generate_waam_3d_studio_html(
         "v_enclosure": v_enclosure,
         "max_vol_limit": max_vol_limit,
         "toolpath": toolpath_moves,
+        "cad_geometry": cad_mesh_payload,
         "gcode_name": os.path.basename(target_gcode) if target_gcode else "Parametric WAAM Pass",
         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
@@ -797,6 +834,47 @@ function buildEnclosure() {{
 
 function buildBeads() {{
   beadGroup = new THREE.Group();
+
+  if (DATA.cad_geometry && DATA.cad_geometry.vertices && DATA.cad_geometry.faces) {{
+    const rawVerts = DATA.cad_geometry.vertices;
+    const rawFaces = DATA.cad_geometry.faces;
+    const positions = [];
+    for (let i = 0; i < rawFaces.length; i++) {{
+      const f = rawFaces[i];
+      for (let j = 0; j < 3; j++) {{
+        const v = rawVerts[f[j]];
+        if (v) positions.push(v[0], v[1], v[2]);
+      }}
+    }}
+    if (positions.length > 0) {{
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geom.computeVertexNormals();
+
+      const mat = new THREE.MeshStandardMaterial({{
+        color: 0xf97316,
+        metalness: 0.5,
+        roughness: 0.40,
+        transparent: true,
+        opacity: 0.85
+      }});
+      const cadMesh = new THREE.Mesh(geom, mat);
+
+      const wireMat = new THREE.MeshBasicMaterial({{
+        color: 0x7c2d12,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.40
+      }});
+      const wireMesh = new THREE.Mesh(geom, wireMat);
+      cadMesh.add(wireMesh);
+
+      beadGroup.add(cadMesh);
+      scene.add(beadGroup);
+      return;
+    }}
+  }}
+
   const yMid = DATA.ly_base / 2;
   const layerColors = [0xf97316, 0xfb923c, 0xf59e0b, 0xd97706, 0xea580c, 0xc2410c];
   const h1 = DATA.h_bead_first || DATA.h_bead || 4.0;
@@ -827,6 +905,7 @@ function buildBeads() {{
   }}
   scene.add(beadGroup);
 }}
+
 
 function buildToolpath() {{
   toolpathGroup = new THREE.Group();

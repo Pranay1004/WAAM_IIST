@@ -1,0 +1,97 @@
+WAAM-Framework — Third-Party and Attribution Notices
+=====================================================
+
+This file is required by, and satisfies the attribution conditions of, the
+licenses listed below. Do not remove it from distributions.
+
+
+1. This framework
+-----------------
+WAAM-Framework / WAAM_IIST
+Copyright (C) 2026 Pranay1004 and the WAAM_IIST contributors
+License: GNU General Public License v3.0 or later (GPL-3.0-or-later)
+https://www.gnu.org/licenses/gpl-3.0.html
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+
+2. Upstream work (derivation)
+-----------------------------
+WAAM-MultiLayer-Simulation
+Author:  Akshansh Mishra (akshansh11)
+GitHub:  https://github.com/akshansh11
+Zenodo:  https://doi.org/10.5281/zenodo.20753459
+License: Creative Commons Attribution-NonCommercial 4.0 International
+         (CC BY-NC 4.0) https://creativecommons.org/licenses/by-nc/4.0/
+
+The files under original_git_file/ (README.md, downloaded.edp) are retained
+verbatim and unmodified under the original CC BY-NC 4.0 terms. They are NOT
+relicensed as GPL. See license/README.md section 2 for the compatibility
+analysis.
+
+BibTeX:
+
+  @software{mishra2026waam,
+    author       = {Mishra, Akshansh},
+    title        = {WAAM-MultiLayer-Simulation},
+    year         = {2026},
+    publisher    = {Zenodo},
+    doi          = {10.5281/zenodo.20753459},
+    url          = {https://doi.org/10.5281/zenodo.20753459}
+  }
+
+
+3. Scientific models and literature
+-----------------------------------
+- Goldak double-ellipsoid heat source:
+  M. Goldak, A. Chakravarti, M. Bibby, "A new finite element model for
+  welding heat sources", Metallurgical Transactions B 17B (1986) 187-193.
+
+- P48 arc/droplet energy-partition heat source:
+  Progress in Additive Manufacturing 1 (2025) 10:11647.
+
+- CAS-DEDD-IMEEN26 external benchmark (AlSi10Mg DED validation case),
+  Ansys Academic Program / TU Wien, 2026.
+
+- Kirkaldy-Venugopalan nucleation kinetics; Koistinen-Marburger martensite
+  start; JMAK (Johnson-Mehl-Avrami-Kolmogorov) transformation kinetics;
+  Hall-Petch strengthening; WRC-1992 constitution diagram; IIW carbon
+  equivalent. All are published empirical relations used in
+  core/multimaterial/alloy_metallurgy.py.
+
+
+4. Bundled third-party code (own license, retained)
+---------------------------------------------------
+- gui/assets/three.min.js      -> MIT License, three.js authors
+                                 (https://github.com/mrdoob/three.js)
+- gui/assets/OrbitControls.js  -> MIT License, three.js authors
+
+Both are bundled (not loaded from a CDN) so the 3D studio works offline.
+
+
+5. External programs (invoked, never redistributed)
+---------------------------------------------------
+- FreeFEM++ >= 4.14 (4.15 recommended) -- GPL, https://freefem.org
+  Discovered at runtime or via FREEFEM_BIN / FF_MPIRUN. Not bundled.
+- OpenFOAM 2412 (optional melt-pool CFD) -- GPL, https://www.openfoam.com
+  Case generation only; the solver binary is not redistributed.
+- ParaView (optional) -- BSD-3-Clause, https://www.paraview.org
+- MUMPS sparse direct solver, METIS partitioning (via FreeFEM++) -- their
+  own licenses.
+
+
+6. Python dependencies (BSD/MIT/Apache-style)
+---------------------------------------------
+numpy, matplotlib, pyvista, vtk, trimesh, gmsh, imageio, pywebview
+See WAAM-Framework/pyproject.toml. Each retains its own license.
+
+
+7. Citation of this framework
+-----------------------------
+  @software{waam_iist_2026,
+    title   = {WAAM_IIST: Wire Arc Additive Manufacturing Multiphysics FEM Framework},
+    author  = {Pranay1004 and the WAAM_IIST contributors},
+    year    = {2026},
+    url     = {https://github.com/Pranay1004/WAAM_IIST},
+    license = {GPL-3.0-or-later}
+  }

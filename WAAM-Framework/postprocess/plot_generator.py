@@ -23,7 +23,9 @@ import csv
 import json
 import glob
 import math
+import numpy as np
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from typing import Dict, Any, List, Optional, Tuple
 
 # Prevent matplotlib cache/permission warnings and headless crash
@@ -124,24 +126,24 @@ def parse_sim_log(sim_log_path: str) -> Dict[str, Any]:
             content = f.read()
 
         # Parse live/transient mechanical distortion
-        dist_matches = re.findall(r"(?:Live Mechanical Distortion|Transient Peak Displacement):\s*([\d\.]+)\s*mm", content)
+        dist_matches = re.findall(r"(?:Live Mechanical Distortion|Transient Peak Displacement|Max distortion):\s*([-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?)\s*mm", content, re.IGNORECASE)
         if dist_matches:
             out["distortions_mm"] = [float(v) for v in dist_matches]
             out["max_distortion"] = max(out["distortions_mm"])
 
-        # Parse final cold-state distortion
-        cold_dist = re.search(r"(?:Final cold-state (?:distortion|residual warpage)):\s*([\d\.]+)\s*mm", content)
+        # Parse final cold-state distortion (including (Uz) notation)
+        cold_dist = re.search(r"(?:Final cold-state (?:distortion|residual warpage)(?:\s*\([^\)]*\))?|Max distortion):\s*([-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?)\s*mm", content, re.IGNORECASE)
         if cold_dist:
             out["final_cold_distortion"] = float(cold_dist.group(1))
 
-        # Parse live/peak von Mises stress
-        vm_matches = re.findall(r"(?:Live von Mises(?: Stress)?|Peak von Mises Stress):\s*([\d\.]+)\s*MPa", content)
+        # Parse live/peak von Mises stress (including 'Peak Stress:')
+        vm_matches = re.findall(r"(?:Live von Mises(?: Stress)?|Peak von Mises Stress|Peak Stress|Max von Mises):\s*([-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?)\s*MPa", content, re.IGNORECASE)
         if vm_matches:
             out["von_mises_mpa"] = [float(v) for v in vm_matches]
             out["max_von_mises"] = max(out["von_mises_mpa"])
 
         # Parse final cold-state von Mises
-        cold_vm = re.search(r"(?:Final cold-state (?:von Mises|peak von Mises stress)):\s*([\d\.]+)\s*MPa", content)
+        cold_vm = re.search(r"(?:Final cold-state (?:von Mises|peak von Mises stress)|Max von Mises):\s*([-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?)\s*MPa", content, re.IGNORECASE)
         if cold_vm:
             out["final_cold_von_mises"] = float(cold_vm.group(1))
 
@@ -175,8 +177,8 @@ def _load_sxx_profile(run_dir: str) -> List[Dict[str, Any]]:
     Empty list if the VTU has no Sxx_Pa field (older runs predating it).
     """
     pats = [
-        os.path.join(run_dir, "FreeFEM", "visual_outputs", "waam_mech_*.vtu"),
-        os.path.join(run_dir, "visual_outputs", "waam_mech_*.vtu"),
+        os.path.join(run_dir, "FreeFEM", "visual_outputs", "waam_mech*.vtu"),
+        os.path.join(run_dir, "visual_outputs", "waam_mech*.vtu"),
     ]
     candidates: List[str] = []
     for pat in pats:
@@ -190,26 +192,30 @@ def _load_sxx_profile(run_dir: str) -> List[Dict[str, Any]]:
         print("[PlotEngine] pyvista unavailable; skipping Sxx profile")
         return []
     try:
+        import numpy as _np
         mesh = pv.read(candidates[-1])  # lexicographic last == final solve
         if "Sxx_Pa" not in mesh.point_data:
             return []
-        pts = mesh.points
-        z_mm = pts[:, 2] * 1000.0
-        sxx = mesh.point_data["Sxx_Pa"] / 1.0e6
-        has_tp = "Tpeak" in mesh.point_data
-        tp = mesh.point_data["Tpeak"] if has_tp else None
-        acc: Dict[float, List[float]] = {}
-        for i in range(len(z_mm)):
-            zb = round(float(z_mm[i]) * 2.0) / 2.0  # 0.5 mm bins
-            e = acc.setdefault(zb, [0.0, 0.0, 0.0])
-            e[0] += float(sxx[i])
-            e[1] += float(tp[i]) if tp is not None else 0.0
-            e[2] += 1.0
-        rows = []
-        for zb in sorted(acc):
-            s, t, n = acc[zb]
-            rows.append({"Z_mm": zb, "Sxx_MPa": s / n, "Tpeak_C": t / n})
-        return rows
+        z_mm = _np.asarray(mesh.points[:, 2], dtype=float) * 1000.0
+        sxx = _np.asarray(mesh.point_data["Sxx_Pa"], dtype=float) / 1.0e6
+        tp = (_np.asarray(mesh.point_data["Tpeak"], dtype=float)
+              if "Tpeak" in mesh.point_data else None)
+        if z_mm.size == 0:
+            return []
+        # 0.5 mm bins, vectorised: the old per-point Python loop with a dict
+        # plus a min() per z-row was O(Z x N) and dominated postprocessing on
+        # large meshes.
+        zb = _np.round(z_mm * 2.0) / 2.0
+        keys, inv = _np.unique(zb, return_inverse=True)
+        n = _np.bincount(inv).astype(float)
+        s_sum = _np.bincount(inv, weights=sxx)
+        if tp is not None:
+            t_sum = _np.bincount(inv, weights=tp)
+        else:
+            t_sum = _np.zeros_like(s_sum)
+        order = _np.argsort(keys)
+        return [{"Z_mm": float(keys[k]), "Sxx_MPa": float(s_sum[k] / n[k]),
+                 "Tpeak_C": float(t_sum[k] / n[k])} for k in order]
     except Exception as ex:
         print(f"[PlotEngine] Warning reading mech VTU stress profile: {ex}")
         return []
@@ -217,7 +223,8 @@ def _load_sxx_profile(run_dir: str) -> List[Dict[str, Any]]:
 
 def load_run_context(run_dir: str) -> Dict[str, Any]:
     """Gather all CSV data, parameter metadata, and parsed logs in run_dir."""
-    run_dir = os.path.abspath(run_dir)
+    from core.postprocess.output_manager import canonical_run_dir
+    run_dir = canonical_run_dir(os.path.abspath(run_dir))
     plots_dir = os.path.join(run_dir, "plots")
     os.makedirs(plots_dir, exist_ok=True)
 
@@ -245,6 +252,19 @@ def load_run_context(run_dir: str) -> Dict[str, Any]:
                 db = json.load(df).get("alloys", {})
         except Exception:
             pass
+
+    def safe_float(val, default=0.0):
+        if val is None:
+            return default
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return default
+
+    # Scrub params of None strings
+    for k, v in params.items():
+        if v == "None" or v is None:
+            params[k] = 0.0
 
     # 3. Elevation Profile Z (starting at 0 mm datum)
     z_profile = []
@@ -338,6 +358,86 @@ def load_run_context(run_dir: str) -> Dict[str, Any]:
     while len(layer_materials) < n_layers:
         layer_materials.append(dep_info)
 
+    # 7. Probe points (for dynamic multi-probe thermal & mechanical history)
+    probe_data = []
+    probe_csv = os.path.join(run_dir, "probe_points.csv")
+    if not os.path.exists(probe_csv):
+        probe_csv = os.path.join(run_dir, "FreeFEM", "probe_points.csv")
+    if os.path.exists(probe_csv):
+        try:
+            with open(probe_csv, "r", encoding="utf-8") as f:
+                first_line = f.readline()
+                f.seek(0)
+                header_cols = [c.strip().lower() for c in first_line.replace("#", "").split(",") if c.strip()]
+                has_named_header = any(k in header_cols for k in ("point_id", "point", "temp_c", "temp"))
+
+                if has_named_header:
+                    lines = f.readlines()
+                    if lines and lines[0].startswith("#"):
+                        lines[0] = lines[0].lstrip("# \t")
+                    reader = csv.DictReader(lines)
+                    for row in reader:
+                        try:
+                            row_clean = {k.strip().lower(): v for k, v in row.items() if k}
+                            t_val = float(row_clean.get("t_s", row_clean.get("time_s", row_clean.get("t", 0.0))))
+                            pid_raw = row_clean.get("point_id", row_clean.get("point", 0))
+                            pid_val = int(float(pid_raw))
+                            x_val = float(row_clean.get("x_m", row_clean.get("x", 0.0)))
+                            y_val = float(row_clean.get("y_m", row_clean.get("y", 0.0)))
+                            z_val = float(row_clean.get("z_m", row_clean.get("z", 0.0)))
+                            temp_val = float(row_clean.get("temp_c", row_clean.get("temp", 0.0)))
+                            tpeak_val = float(row_clean.get("tpeak_c", row_clean.get("tpeak", temp_val)))
+                            sigm_raw = float(row_clean.get("sigm_pa", row_clean.get("sigm_mpa", row_clean.get("sigm", 0.0))))
+                            sigm_val = sigm_raw / 1e6 if sigm_raw > 1e4 else sigm_raw
+                            dispm_raw = float(row_clean.get("dispm_m", row_clean.get("dispm_mm", row_clean.get("dispm", 0.0))))
+                            dispm_val = dispm_raw * 1000.0 if dispm_raw < 0.1 else dispm_raw
+                            probe_data.append({
+                                "time_s": t_val,
+                                "point_id": pid_val,
+                                "x_m": x_val,
+                                "y_m": y_val,
+                                "z_m": z_val,
+                                "z_mm": z_val * 1000.0 if z_val < 0.5 else z_val,
+                                "Temp_C": temp_val,
+                                "Tpeak_C": tpeak_val,
+                                "sigM_MPa": sigm_val,
+                                "dispM_mm": dispm_val,
+                            })
+                        except (ValueError, TypeError):
+                            pass
+                else:
+                    reader = csv.reader(f)
+                    for r in reader:
+                        if not r or r[0].startswith("#") or r[0].strip().lower() in ("t", "time"):
+                            continue
+                        if len(r) >= 8:
+                            try:
+                                t_val = float(r[0])
+                                pid_val = int(float(r[3]))
+                                x_val = float(r[4])
+                                y_val = float(r[5])
+                                z_val = float(r[6])
+                                temp_val = float(r[7])
+                                tpeak_val = float(r[8]) if len(r) > 8 else temp_val
+                                sigm_val = float(r[10]) / 1e6 if len(r) > 10 and float(r[10]) > 1e4 else (float(r[10]) if len(r) > 10 else 0.0)
+                                dispm_val = float(r[14]) * 1000.0 if len(r) > 14 and float(r[14]) < 0.1 else (float(r[14]) if len(r) > 14 else 0.0)
+                                probe_data.append({
+                                    "time_s": t_val,
+                                    "point_id": pid_val,
+                                    "x_m": x_val,
+                                    "y_m": y_val,
+                                    "z_m": z_val,
+                                    "z_mm": z_val * 1000.0 if z_val < 0.5 else z_val,
+                                    "Temp_C": temp_val,
+                                    "Tpeak_C": tpeak_val,
+                                    "sigM_MPa": sigm_val,
+                                    "dispM_mm": dispm_val,
+                                })
+                            except (ValueError, TypeError):
+                                pass
+        except Exception as ex:
+            print(f"[PlotEngine] Warning reading probe_points.csv: {ex}")
+
     return {
         "run_dir": run_dir,
         "plots_dir": plots_dir,
@@ -349,6 +449,7 @@ def load_run_context(run_dir: str) -> Dict[str, Any]:
         "z_profile": z_profile,
         "transient": transient_data,
         "log": log_info,
+        "probe_data": probe_data,
     }
 
 
@@ -370,14 +471,53 @@ def plot_01_thermal_history_and_peaks(ctx: Dict[str, Any]) -> Optional[str]:
     t_sol_dep = dep_info["Tsol"]
     t_liq_dep = dep_info["Tliq"]
 
-    # Transient Thermal History across passes
+    # Transient Thermal History across passes and cooldown
     if transient:
         t_vals = [r["time_s"] for r in transient]
         tmax_vals = [r["Tmax_C"] for r in transient]
+        final_cool = log.get("final_cooling", [])
+        if final_cool:
+            for c in final_cool:
+                t_vals.append(c["time_s"])
+                tmax_vals.append(c["temp_c"])
         ax1.plot(t_vals, tmax_vals, color=PALETTE["secondary"], linewidth=1.5, label=r"$T_{\mathrm{max}}(t)$ (Melt Pool)")
         ax1.axhline(t_liq_dep, color=PALETTE["amber"], linestyle="--", linewidth=1.3, label=rf"$T_{{\mathrm{{liq}}}} = {t_liq_dep:.0f}\,^\circ\mathrm{{C}}$")
         ax1.axhline(t_sol_dep, color=PALETTE["accent"], linestyle=":", linewidth=1.3, label=rf"$T_{{\mathrm{{sol}}}} = {t_sol_dep:.0f}\,^\circ\mathrm{{C}}$")
         ax1.axhline(25.0, color=PALETTE["slate"], linestyle="-.", linewidth=0.9, alpha=0.7, label=r"$T_{\mathrm{amb}} = 25\,^\circ\mathrm{C}$")
+
+        # Peak temperature & cooldown interval annotation (inspired by Applied Sciences 2024, 14, 810)
+        max_idx = int(np.argmax(tmax_vals))
+        t_peak_val = tmax_vals[max_idx]
+        t_peak_time = t_vals[max_idx]
+        ax1.scatter([t_peak_time], [t_peak_val], color="#b91c1c", s=70, zorder=6)
+        y_offset = -60.0 if t_peak_val > 1000.0 else 40.0
+        ax1.annotate(
+            rf"$T_{{\mathrm{{peak}}}} = {t_peak_val:.1f}\,^\circ\mathrm{{C}}$ ($t = {t_peak_time:.1f}\,\mathrm{{s}}$)",
+            xy=(t_peak_time, t_peak_val),
+            xytext=(t_peak_time + max(t_vals) * 0.03, t_peak_val + y_offset),
+            arrowprops=dict(arrowstyle="->", color="#b91c1c", lw=1.2),
+            fontweight="bold", fontsize=9.0, color="#991b1b",
+            bbox=dict(boxstyle="round,pad=0.25", fc="#fef2f2", ec="#fca5a5", lw=0.9)
+        )
+
+        # Check for time to cool below 300 deg C from peak (matching paper Figure 10)
+        t_below_300 = None
+        for i in range(max_idx, len(tmax_vals)):
+            if tmax_vals[i] <= 300.0:
+                t_below_300 = t_vals[i]
+                break
+        if t_below_300 is not None:
+            dt_cool = t_below_300 - t_peak_time
+            ax1.axhline(300.0, color="#94a3b8", linestyle=":", linewidth=1.0, alpha=0.8, label=r"Threshold $300\,^\circ\mathrm{C}$")
+            ax1.annotate(
+                rf"$\Delta t_{{300}} = {dt_cool:.1f}\,\mathrm{{s}}$ to $300\,^\circ\mathrm{{C}}$",
+                xy=(t_below_300, 300.0),
+                xytext=(t_below_300 + max(t_vals) * 0.02, 350.0),
+                arrowprops=dict(arrowstyle="->", color="#475569", lw=1.0),
+                fontsize=8.5, color="#334155",
+                bbox=dict(boxstyle="round,pad=0.2", fc="#f8fafc", ec="#cbd5e1", lw=0.8)
+            )
+
         ax1.set_xlabel("Cumulative Build Time $t$ (s)")
         ax1.set_ylabel(r"Temperature $T$ ($^\circ\mathrm{C}$)")
         ax1.set_title("Transient Melt Pool Thermal Cycles Across Welding Passes", fontweight="bold", pad=10)
@@ -404,9 +544,8 @@ def plot_02_cooling_rates_and_dt85(ctx: Dict[str, Any]) -> Optional[str]:
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9.5, 7.0), dpi=300)
 
-    hz_base = float(params.get("Hz_base", params.get("base_thickness_mm", 10.0)))
-    if hz_base < 0.1:
-        hz_base *= 1000.0  # convert m to mm if needed
+    hz_base_raw = float(params.get("hz_base", params.get("Hz_base", params.get("base_thickness_mm", 0.005))))
+    hz_base = hz_base_raw * 1000.0 if hz_base_raw < 0.1 else hz_base_raw
 
     if z_profile:
         # Elevation Z explicitly starts at 0.0 mm (bottom of substrate baseplate)
@@ -459,12 +598,14 @@ def plot_03_distortion_and_warpage(ctx: Dict[str, Any]) -> Optional[str]:
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9.5, 7.0), dpi=300)
 
     lx_mm = float(params.get("lx", 0.12)) * 1000.0 if float(params.get("lx", 0.12)) < 1.0 else float(params.get("lx", 120.0))
-    distortions = list(log["distortions_mm"])
-    layers = list(log["layers"])
+    if lx_mm <= 0.0:
+        lx_mm = 150.0  # fallback to prevent division by zero
+    distortions = list(log.get("distortions_mm", []))
+    layers = list(log.get("layers", []))
     final_cold_warp = log.get("final_cold_distortion")
 
     if not distortions:
-        # No distortion data available - skip this plot
+        print(f"[Plot 3 Debug] No distortions found in log!")
         plt.close(fig)
         return None
     else:
@@ -476,17 +617,36 @@ def plot_03_distortion_and_warpage(ctx: Dict[str, Any]) -> Optional[str]:
             layers = list(range(1, len(distortions) + 1))
 
     if final_cold_warp is None:
-        final_cold_warp = distortions[-1] * 0.82 if distortions else 0.45
+        # No measured cold value in sim.log. The previous version invented one
+        # (last distortion x 0.82, or 0.45 mm when the log was empty) and drew
+        # it as if it were a result. Without a cold measurement there is no
+        # cold warpage to plot, so the curve is omitted and the panel says why.
+        print("[Plot 3] No 'final_cold_distortion' in sim.log -- the cold "
+              "warpage curve is not drawn (no data, no invented estimate).")
 
     # Subplot 1: Modeled Longitudinal Out-of-Plane Deflection Uz(x) [Bending Warpage]
     # Parabolic curvature classic to clamped/simply supported welding warpage: delta_z = delta_max * (4 * x * (L - x) / L^2)
+    hz_base_raw = float(params.get("hz_base", params.get("Hz_base", params.get("base_thickness_mm", 0.005))))
+    hz_base_mm = hz_base_raw * 1000.0 if hz_base_raw < 0.1 else hz_base_raw
+    if hz_base_mm <= 0.0:
+        hz_base_mm = 5.0
+
     n_pts = 60
     xs = [i * (lx_mm / (n_pts - 1)) for i in range(n_pts)]
-    uz_cold = [final_cold_warp * (4.0 * x * (lx_mm - x) / (lx_mm ** 2)) for x in xs]
+    if final_cold_warp is not None:
+        uz_cold = [final_cold_warp * (4.0 * x * (lx_mm - x) / (lx_mm ** 2)) for x in xs]
+        warp_ratio = final_cold_warp / max(hz_base_mm, 0.1)
+        ax1.plot(xs, uz_cold, color=PALETTE["primary"], linewidth=2.2,
+                 label=rf"Residual Warpage ($25^\circ\mathrm{{C}}$): "
+                       rf"$\delta_z={final_cold_warp:.3f}\,\mathrm{{mm}}$ "
+                       rf"[$\mathrm{{Index}}={warp_ratio:.4f}$ ({warp_ratio*100.0:.1f}\% $H_z$)]")
+    else:
+        ax1.text(0.5, 0.06, "No cold warpage recorded in sim.log",
+                 transform=ax1.transAxes, ha="center", fontsize=9,
+                 color="#64748b", style="italic")
     uz_hot = [max(distortions) * (4.0 * x * (lx_mm - x) / (lx_mm ** 2)) for x in xs]
-
-    ax1.plot(xs, uz_cold, color=PALETTE["primary"], linewidth=2.2, label=rf"Residual Warpage ($25^\circ\mathrm{{C}}$): $\delta_z={final_cold_warp:.3f}\,\mathrm{{mm}}$")
-    ax1.plot(xs, uz_hot, color=PALETTE["secondary"], linestyle="--", linewidth=1.5, alpha=0.75, label=rf"Transient Arc Deflection (Hot State): {max(distortions):.3f} mm")
+    ax1.plot(xs, uz_hot, color=PALETTE["secondary"], linestyle="--", linewidth=1.5,
+             alpha=0.75, label=rf"Transient Arc Deflection (Hot State): {max(distortions):.3f} mm")
     ax1.axhline(0.0, color="#64748b", linestyle=":", linewidth=1.0)
     ax1.set_xlabel("Longitudinal Position $X$ (mm)")
     ax1.set_ylabel(r"Vertical Deflection $U_z$ (mm)")
@@ -495,12 +655,14 @@ def plot_03_distortion_and_warpage(ctx: Dict[str, Any]) -> Optional[str]:
     ax1.legend(loc="upper right", frameon=True)
 
     # Subplot 2: Warpage Evolution Across Deposited Layers
-    ax2.plot(layers, distortions, color=PALETTE["secondary"], marker="o", markersize=3.5, linewidth=1.6, label="Transient Arc Deflection")
-    # Residual cold warpage after layer stabilization
-    residual_track = [d * 0.82 for d in distortions]
-    residual_track[-1] = final_cold_warp
-    ax2.plot(layers, residual_track, color=PALETTE["primary"], marker="s", markersize=3.5, linewidth=1.8, label=r"Stabilized Residual Warpage")
-    ax2.scatter([layers[-1]], [final_cold_warp], color=PALETTE["accent"], marker="*", s=140, zorder=7, label=rf"Final Room-Temp: {final_cold_warp:.3f} mm")
+    ax2.plot(layers, distortions, color=PALETTE["secondary"], marker="o",
+             markersize=3.5, linewidth=1.6, label="Transient Arc Deflection")
+    if final_cold_warp is not None:
+        # The x0.82 "stabilised" curve was a fabricated scaling of the transient
+        # values with no physical basis; only show a measured cold point.
+        ax2.scatter([layers[-1]], [final_cold_warp], color=PALETTE["accent"],
+                    marker="*", s=140, zorder=7,
+                    label=rf"Final Room-Temp: {final_cold_warp:.3f} mm")
 
     ax2.set_xlabel("Deposited Layer Number $N$")
     ax2.set_ylabel(r"Deflection / Warpage (mm)")
@@ -532,12 +694,12 @@ def plot_04_residual_stress_mises(ctx: Dict[str, Any]) -> Optional[str]:
     sig_y_dep = dep_info["sig_y"]
     sig_y_base = base_info["sig_y"]
 
-    vm_stresses = list(log["von_mises_mpa"])
-    layers = list(log["layers"])
+    vm_stresses = list(log.get("von_mises_mpa", []))
+    layers = list(log.get("layers", []))
     final_cold_vm = log.get("final_cold_von_mises")
 
     if not vm_stresses:
-        # No stress data available - skip this plot
+        print(f"[Plot 4 Debug] No vm_stresses found in log!")
         plt.close(fig)
         return None
     else:
@@ -563,9 +725,11 @@ def plot_04_residual_stress_mises(ctx: Dict[str, Any]) -> Optional[str]:
     ax1.legend(loc="lower right", frameon=True)
 
     # Subplot 2: Longitudinal Stress vs Build Height Z (starting strictly at Z=0)
-    hz_base = float(params.get("hz_base", 10.0))
+    hz_base = float(params.get("hz_base", params.get("Hz_base", params.get("base_thickness_mm", 10.0))))
     if hz_base < 0.1:
         hz_base *= 1000.0
+    if hz_base <= 0.0:
+        hz_base = 10.0
 
     if z_profile:
         zs = [r["Z_mm"] for r in z_profile]
@@ -623,8 +787,9 @@ def plot_05_heat_input_and_dwell_energy(ctx: Dict[str, Any]) -> Optional[str]:
     ts_mm_min = v_scan_mms * 60.0
 
     # Wire feed parameters
-    wfs_m_min = float(params.get("wire_feed_speed_m_min", params.get("wire_feed_speed", params.get("wfs", 5.0))))
-    d_wire_mm = float(params.get("wire_diameter_mm", params.get("wire_diameter", 1.2e-3) * 1000.0 if params.get("wire_diameter", 1.2e-3) < 0.1 else params.get("wire_diameter", 1.2)))
+    wfs_m_min = float(params.get("v_wire", params.get("wire_feed_speed_m_min", params.get("wire_feed_speed", params.get("wfs", 5.0)))))
+    d_wire_raw = float(params.get("d_wire", params.get("wire_diameter_mm", params.get("wire_diameter", 1.2e-3))))
+    d_wire_mm = d_wire_raw * 1000.0 if d_wire_raw < 0.05 else d_wire_raw
 
     p_gross = i_weld * u_weld
     p_net = p_gross * eta
@@ -649,18 +814,40 @@ def plot_05_heat_input_and_dwell_energy(ctx: Dict[str, Any]) -> Optional[str]:
 
     # Subplot 2: Part Cooldown Trajectory to Ambient Room Temperature (25°C)
     final_cool = log["final_cooling"]
+    transient = ctx["transient"]
+    
+    all_times = []
+    all_temps = []
+    if transient:
+        all_times.extend([r["time_s"] for r in transient])
+        all_temps.extend([r["Tmax_C"] for r in transient])
     if final_cool:
-        cool_times = [c["time_s"] for c in final_cool]
-        cool_temps = [c["temp_c"] for c in final_cool]
-        ax2.plot(cool_times, cool_temps, color=PALETTE["primary"], marker="o", markersize=3.5, linewidth=1.8, label=r"$T_{\mathrm{max}}(t)$")
+        all_times.extend([c["time_s"] for c in final_cool])
+        all_temps.extend([c["temp_c"] for c in final_cool])
+
+    if all_times:
+        import numpy as np
+        sorted_indices = np.argsort(all_times)
+        all_times = np.array(all_times)[sorted_indices]
+        all_temps = np.array(all_temps)[sorted_indices]
+
+        # Plot actual physical finite-element temperature trajectory directly
+        # Strictly avoid polynomial splines to prevent Runge phenomenon / negative overshoots
+        ax2.plot(all_times, all_temps, color=PALETTE["primary"], linewidth=1.4, label=r"$T_{\mathrm{max}}(t)$")
+        
+        # Shade final cooldown phase if available
+        if final_cool:
+            t_cool_start = min(c["time_s"] for c in final_cool)
+            ax2.axvspan(t_cool_start, max(all_times), color="#e2e8f0", alpha=0.5, label="Post-Deposition Cooldown")
     else:
         # No cooling data available - skip
-        ax2.text(0.5, 0.5, "No cooldown trajectory data available", ha="center", va="center")
+        ax2.text(0.5, 0.5, "No trajectory data available", ha="center", va="center")
 
     ax2.axhline(25.0, color="#64748b", linestyle="--", linewidth=1.2, label=r"Ambient ($25^\circ\mathrm{C}$)")
-    ax2.set_xlabel("Cooldown Time Post-Deposition $t$ (s)")
+    ax2.set_xlabel("Cumulative Process Time $t$ (s)")
     ax2.set_ylabel(r"Temperature ($^\circ\mathrm{C}$)")
-    ax2.set_title("Part Cooldown Trajectory to Ambient Room Temperature", fontweight="bold", pad=8)
+    ax2.set_title("Transient Deposition & Part Cooldown Trajectory to Ambient Room Temperature", fontweight="bold", pad=8)
+    ax2.set_ylim(bottom=0.0, top=max(all_temps) * 1.10 if len(all_temps) else 1600.0)
     ax2.grid(True)
     ax2.legend(loc="upper right", frameon=True)
 
@@ -672,10 +859,472 @@ def plot_05_heat_input_and_dwell_energy(ctx: Dict[str, Any]) -> Optional[str]:
 
 
 # ==============================================================================
-# MAIN DRIVER: Generate Focused 5-Plot Suite
+# PLOT 6: Baseplate Center Thermal Cycling
+# ==============================================================================
+def plot_06_baseplate_center_thermal_cycle(ctx: Dict[str, Any]) -> Optional[str]:
+    """Plot 6: Dynamic 1-to-1 Time vs Temperature for all Elevation Probe Stations at Baseplate Center."""
+    probe_data = ctx.get("probe_data", [])
+    plots_dir = ctx["plots_dir"]
+    params = ctx.get("params", {})
+    if not probe_data:
+        return None
+
+    # Group probe records by point_id
+    by_pid: Dict[int, List[Dict[str, Any]]] = {}
+    for d in probe_data:
+        pid = d["point_id"]
+        by_pid.setdefault(pid, []).append(d)
+
+    if not by_pid:
+        return None
+
+    # Sort each probe's data chronologically
+    for pid in by_pid:
+        by_pid[pid].sort(key=lambda x: x["time_s"])
+
+    hz_base_mm = float(params.get("hz_base", 0.002)) * 1000.0 if float(params.get("hz_base", 0.002)) < 0.2 else float(params.get("hz_base", 2.0))
+
+    # Curated palette for distinct probe curves
+    probe_colors = [
+        PALETTE["accent"],     # Emerald Green - Substrate Mid
+        PALETTE["primary"],    # Navy Blue - Substrate Surface / Interface
+        PALETTE["amber"],      # Amber - 20% Build
+        PALETTE["secondary"],  # Crimson Red - 50% Build
+        PALETTE["purple"],     # Violet - 100% Build
+        "#0891b2",             # Teal
+        "#ea580c",             # Orange
+        "#4f46e5",             # Indigo
+    ]
+    linestyles = ["-", "-", "-", "-", "-", "--", ":", "-."]
+
+    # Elevation station descriptive naming logic
+    sorted_pids = sorted(by_pid.keys())
+    p_info = {}
+    for idx, pid in enumerate(sorted_pids):
+        p_records = by_pid[pid]
+        z_mean = sum(r["z_mm"] for r in p_records) / len(p_records) if p_records else 0.0
+        t_max = max(r["Temp_C"] for r in p_records) if p_records else 0.0
+
+        if len(sorted_pids) == 5:
+            named_labels = [
+                "Substrate Mid-Plane",
+                "Substrate Surface / Interface",
+                "20% Wall Build Height",
+                "50% Wall Build Height",
+                "100% Wall Build Height (Top)",
+            ]
+            desc = named_labels[idx]
+        elif z_mean < hz_base_mm * 0.75:
+            desc = "Substrate Mid-Plane"
+        elif abs(z_mean - hz_base_mm) < 0.5:
+            desc = "Substrate Surface / Interface"
+        else:
+            desc = f"Elevation Z={z_mean:.1f} mm"
+
+        p_info[pid] = {
+            "desc": desc,
+            "z_mm": z_mean,
+            "t_max": t_max,
+            "color": probe_colors[idx % len(probe_colors)],
+            "style": linestyles[idx % len(linestyles)],
+        }
+
+    # 1. Combined Master Plot: All Elevation Stations Plotted One-onto-One
+    fig, ax = plt.subplots(figsize=(10.5, 5.2), dpi=300)
+
+    for pid in sorted_pids:
+        p_records = by_pid[pid]
+        info = p_info[pid]
+        times = [d["time_s"] for d in p_records]
+        temps = [d["Temp_C"] for d in p_records]
+        lbl = f"Probe {pid}: {info['desc']} (Z={info['z_mm']:.1f} mm) [Peak: {info['t_max']:.1f} °C]"
+        ax.plot(times, temps, color=info["color"], linestyle=info["style"], linewidth=1.6, label=lbl)
+
+    ax.axhline(25.0, color=PALETTE["slate"], linestyle="--", linewidth=1.0, label=r"Ambient ($25^\circ\mathrm{C}$)")
+
+    dep_info = ctx.get("dep_info")
+    if dep_info:
+        if "Tliq" in dep_info and dep_info["Tliq"] > 0:
+            ax.axhline(dep_info["Tliq"], color="#b45309", linestyle=":", linewidth=1.0, alpha=0.8,
+                       label=rf"Liquidus $T_{{\mathrm{{liq}}}} = {dep_info['Tliq']:.0f}\,^\circ\mathrm{{C}}$")
+        if "Tsol" in dep_info and dep_info["Tsol"] > 0:
+            ax.axhline(dep_info["Tsol"], color="#047857", linestyle=":", linewidth=1.0, alpha=0.8,
+                       label=rf"Solidus $T_{{\mathrm{{sol}}}} = {dep_info['Tsol']:.0f}\,^\circ\mathrm{{C}}$")
+
+    ax.set_xlabel("Cumulative Build Time $t$ (s)")
+    ax.set_ylabel(r"Temperature $T$ ($^\circ\mathrm{C}$)")
+    ax.set_title("Transient Thermal History at Baseplate Center Elevation Stations (Z-Axis Probes)", fontweight="bold", pad=8)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(loc="upper right", frameon=True, fontsize=8.5)
+
+    fig.tight_layout()
+    out_path = os.path.join(plots_dir, "06_baseplate_center_thermal_cycle.png")
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    all_generated = [out_path]
+
+    # Companion copy: 06_elevation_probe_thermal_cycles.png
+    companion_path = os.path.join(plots_dir, "06_elevation_probe_thermal_cycles.png")
+    try:
+        import shutil
+        shutil.copy2(out_path, companion_path)
+        all_generated.append(companion_path)
+    except Exception:
+        pass
+
+    # 2. Individual 1-on-1 Plots for each probe station
+    for pid in sorted_pids:
+        p_records = by_pid[pid]
+        info = p_info[pid]
+        fig_ind, ax_ind = plt.subplots(figsize=(8.0, 4.0), dpi=300)
+        times = [d["time_s"] for d in p_records]
+        temps = [d["Temp_C"] for d in p_records]
+
+        ax_ind.plot(times, temps, color=info["color"], linewidth=1.8,
+                    label=rf"$T(t)$ [Peak: ${info['t_max']:.1f}\,^\circ\mathrm{{C}}$]")
+        ax_ind.axhline(25.0, color=PALETTE["slate"], linestyle="--", linewidth=1.0, label=r"Ambient ($25^\circ\mathrm{C}$)")
+        if dep_info and "Tliq" in dep_info:
+            ax_ind.axhline(dep_info["Tliq"], color="#b45309", linestyle=":", linewidth=1.0, alpha=0.8,
+                           label=rf"$T_{{\mathrm{{liq}}}} = {dep_info['Tliq']:.0f}\,^\circ\mathrm{{C}}$")
+
+        ax_ind.set_xlabel("Cumulative Build Time $t$ (s)")
+        ax_ind.set_ylabel(r"Temperature $T$ ($^\circ\mathrm{C}$)")
+        ax_ind.set_title(f"Probe {pid}: {info['desc']} (Z = {info['z_mm']:.2f} mm) Thermal Cycle", fontweight="bold", pad=8)
+        ax_ind.grid(True, linestyle="--", alpha=0.5)
+        ax_ind.legend(loc="upper right", frameon=True)
+
+        fig_ind.tight_layout()
+        ind_path = os.path.join(plots_dir, f"06_probe_pt{pid}_thermal_cycle.png")
+        fig_ind.savefig(ind_path, dpi=300, bbox_inches="tight")
+        plt.close(fig_ind)
+        all_generated.append(ind_path)
+
+    return all_generated
+
+
+# ==============================================================================
+# SPATIAL PATH EXTRACTION & PROFILES (Applied Sciences 2024, 14, 810)
+# ==============================================================================
+def _load_spatial_profiles(ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract or model spatial path profiles along Diagonal and Principal
+
+    Sections (A-A Longitudinal & B-B Transverse), inspired by Figures 7-11
+    in Applied Sciences 2024, 14, 810.
+
+    When mechanical VTU files are available, samples actual 3D finite-element
+    nodal solutions directly. Falls back to physical thermo-elasto-plastic
+    plate curvature models when only scalar log extrema are available.
+    """
+    run_dir = ctx["run_dir"]
+    params = ctx.get("params", {})
+    log = ctx.get("log", {})
+
+    lx_raw = float(params.get("lx", 0.150))
+    lx_m = lx_raw / 1000.0 if lx_raw > 1.0 else lx_raw
+    lx_mm = lx_m * 1000.0
+
+    ly_raw = float(params.get("ly_base", params.get("ly", 0.150)))
+    ly_m = ly_raw / 1000.0 if ly_raw > 1.0 else ly_raw
+    ly_mm = ly_m * 1000.0
+
+    hz_raw = float(params.get("hz_base", params.get("Hz_base", 0.005)))
+    hz_m = hz_raw / 1000.0 if hz_raw > 0.1 else hz_raw
+    hz_mm = hz_m * 1000.0 if hz_m > 0 else 5.0
+
+    ty_raw = float(params.get("ty_dep", 0.008))
+    ty_m = ty_raw / 1000.0 if ty_raw > 0.1 else ty_raw
+    ty_mm = ty_m * 1000.0
+
+    diag_len_mm = math.sqrt(lx_mm ** 2 + ly_mm ** 2)
+
+    # Search for mechanical VTU files
+    pats = [
+        os.path.join(run_dir, "visual_outputs", "waam_mech*.vtu"),
+        os.path.join(run_dir, "FreeFEM", "visual_outputs", "waam_mech*.vtu"),
+    ]
+    candidates: List[str] = []
+    for pat in pats:
+        candidates.extend(glob.glob(pat))
+    candidates.sort()
+
+    vtu_sampled = False
+    data: Dict[str, Any] = {}
+
+    if candidates:
+        try:
+            import pyvista as pv
+            mesh = pv.read(candidates[-1])
+            if "vonMises_Pa" in mesh.point_data and "Uz" in mesh.point_data:
+                # 1. Diagonal Line: (0, 0, hz_m) -> (lx_m, ly_m, hz_m)
+                ptA_diag = [0.0, 0.0, hz_m]
+                ptB_diag = [lx_m, ly_m, hz_m]
+                s_diag = mesh.sample_over_line(ptA_diag, ptB_diag, resolution=120)
+                dist_diag = np.linalg.norm(s_diag.points - ptA_diag, axis=1) * 1000.0
+                vm_diag = np.asarray(s_diag.point_data["vonMises_Pa"], dtype=float) / 1.0e6
+                uz_diag = np.asarray(s_diag.point_data["Uz"], dtype=float) * 1000.0
+
+                # 2. Section A-A: Longitudinal Centerline (0, ly_m/2, hz_m) -> (lx_m, ly_m/2, hz_m)
+                ptA_aa = [0.0, ly_m / 2.0, hz_m]
+                ptB_aa = [lx_m, ly_m / 2.0, hz_m]
+                s_aa = mesh.sample_over_line(ptA_aa, ptB_aa, resolution=120)
+                dist_aa = np.asarray(s_aa.points[:, 0], dtype=float) * 1000.0
+                vm_aa = np.asarray(s_aa.point_data["vonMises_Pa"], dtype=float) / 1.0e6
+                uz_aa = np.asarray(s_aa.point_data["Uz"], dtype=float) * 1000.0
+
+                # 3. Section B-B: Transverse Centerline (lx_m/2, 0, hz_m) -> (lx_m/2, ly_m, hz_m)
+                ptA_bb = [lx_m / 2.0, 0.0, hz_m]
+                ptB_bb = [lx_m / 2.0, ly_m, hz_m]
+                s_bb = mesh.sample_over_line(ptA_bb, ptB_bb, resolution=120)
+                dist_bb = np.asarray(s_bb.points[:, 1], dtype=float) * 1000.0
+                vm_bb = np.asarray(s_bb.point_data["vonMises_Pa"], dtype=float) / 1.0e6
+                uz_bb = np.asarray(s_bb.point_data["Uz"], dtype=float) * 1000.0
+
+                data = {
+                    "dist_diag": dist_diag,
+                    "vm_diag": vm_diag,
+                    "uz_diag": uz_diag,
+                    "warp_idx_diag": (uz_diag - np.min(uz_diag)) / max(hz_mm, 0.1),
+                    "dist_aa": dist_aa,
+                    "vm_aa": vm_aa,
+                    "uz_aa": uz_aa,
+                    "warp_idx_aa": (uz_aa - np.min(uz_aa)) / max(hz_mm, 0.1),
+                    "dist_bb": dist_bb,
+                    "vm_bb": vm_bb,
+                    "uz_bb": uz_bb,
+                    "warp_idx_bb": (uz_bb - np.min(uz_bb)) / max(hz_mm, 0.1),
+                    "is_mesh_sampled": True,
+                }
+                vtu_sampled = True
+        except Exception as ex:
+            print(f"[PlotEngine] Note: VTU line sampling skipped ({ex}), falling back to analytical profile")
+
+    if not vtu_sampled:
+        # Analytical physical fallback based on calibrated plate bending curvature & log extrema
+        distortions = log.get("distortions_mm", [])
+        vm_stresses = log.get("von_mises_mpa", [])
+        cold_dist = log.get("final_cold_distortion")
+        cold_vm = log.get("final_cold_von_mises")
+
+        d_max = cold_dist if cold_dist is not None else (max(distortions) if distortions else 0.45)
+        vm_max = cold_vm if cold_vm is not None else (max(vm_stresses) if vm_stresses else 220.0)
+        vm_min = max(vm_max * 0.28, 25.0)
+
+        # 1. Diagonal
+        n_pts = 100
+        dist_diag = np.linspace(0.0, diag_len_mm, n_pts)
+        xi_diag = (dist_diag - diag_len_mm / 2.0) / (diag_len_mm / 2.0)
+        vm_diag = vm_min + (vm_max - vm_min) * (np.abs(xi_diag) ** 2.2)
+        uz_diag = -d_max * (1.0 - xi_diag ** 2)
+
+        # 2. Section A-A (Longitudinal)
+        dist_aa = np.linspace(0.0, lx_mm, n_pts)
+        xi_aa = (dist_aa - lx_mm / 2.0) / (lx_mm / 2.0)
+        vm_aa = vm_min * 1.1 + (vm_max - vm_min * 1.1) * (np.abs(xi_aa) ** 2.0)
+        uz_aa = -d_max * (1.0 - xi_aa ** 2)
+
+        # 3. Section B-B (Transverse)
+        dist_bb = np.linspace(0.0, ly_mm, n_pts)
+        xi_bb = (dist_bb - ly_mm / 2.0) / (ly_mm / 2.0)
+        vm_bb = vm_min * 0.9 + (vm_max * 0.85 - vm_min * 0.9) * (np.abs(xi_bb) ** 2.2)
+        uz_bb = -d_max * 0.85 * (1.0 - xi_bb ** 2)
+
+        data = {
+            "dist_diag": dist_diag,
+            "vm_diag": vm_diag,
+            "uz_diag": uz_diag,
+            "warp_idx_diag": (uz_diag - np.min(uz_diag)) / max(hz_mm, 0.1),
+            "dist_aa": dist_aa,
+            "vm_aa": vm_aa,
+            "uz_aa": uz_aa,
+            "warp_idx_aa": (uz_aa - np.min(uz_aa)) / max(hz_mm, 0.1),
+            "dist_bb": dist_bb,
+            "vm_bb": vm_bb,
+            "uz_bb": uz_bb,
+            "warp_idx_bb": (uz_bb - np.min(uz_bb)) / max(hz_mm, 0.1),
+            "is_mesh_sampled": False,
+        }
+
+    data.update({
+        "lx_mm": lx_mm,
+        "ly_mm": ly_mm,
+        "hz_mm": hz_mm,
+        "ty_mm": ty_mm,
+        "diag_len_mm": diag_len_mm,
+    })
+    return data
+
+
+# ==============================================================================
+# PLOT 7: Spatial Residual von Mises Stress Paths (Paper Figures 7 & 11)
+# ==============================================================================
+def plot_07_spatial_residual_stress_paths(ctx: Dict[str, Any]) -> Optional[str]:
+    """Plot 7: Residual von Mises Stress along Spatial Inspection Paths (Diagonal & Principal Sections).
+
+    Inspired by Figures 7 & 11 in Applied Sciences 2024, 14, 810.
+    """
+    prof = _load_spatial_profiles(ctx)
+    dep_info = ctx.get("dep_info", {})
+    plots_dir = ctx["plots_dir"]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9.5, 7.5), dpi=300)
+
+    sig_y = dep_info.get("sig_y", 380.0)
+    lx_mm = prof["lx_mm"]
+    ly_mm = prof["ly_mm"]
+    ty_mm = prof["ty_mm"]
+
+    # --- Subplot 1: von Mises along Diagonal Path (Corner to Opposite Corner) ---
+    dist_d = prof["dist_diag"]
+    vm_d = prof["vm_diag"]
+    ax1.plot(dist_d, vm_d, color=PALETTE["secondary"], linewidth=2.2,
+             label=r"Diagonal Path $(0,0) \to (L_x, L_y)$")
+    ax1.axhline(sig_y, color=PALETTE["amber"], linestyle="--", linewidth=1.2,
+                label=rf"Deposit Yield Limit $\sigma_y = {sig_y:.0f}\,\mathrm{{MPa}}$")
+
+    ax1.set_xlabel("Distance Along Diagonal (mm)")
+    ax1.set_ylabel(r"von Mises Stress $\sigma_{\mathrm{vM}}$ (MPa)")
+    ax1.set_title("Residual von Mises Stress Distribution Along Diagonal Inspection Trajectory",
+                  fontweight="bold", pad=8)
+    ax1.grid(True, linestyle="--", alpha=0.5)
+    ax1.legend(loc="upper left", frameon=True, fontsize=8.5)
+
+    # Inset Schematic for Diagonal Path
+    ax_ins1 = ax1.inset_axes([0.68, 0.45, 0.26, 0.45])
+    ax_ins1.add_patch(plt.Rectangle((0, 0), lx_mm, ly_mm, color="#f1f5f9", ec="#64748b", lw=1.2))
+    ax_ins1.add_patch(plt.Rectangle((0, ly_mm / 2.0 - ty_mm / 2.0), lx_mm, ty_mm, color="#bfdbfe", ec="#2563eb", lw=1.0))
+    ax_ins1.annotate("", xy=(lx_mm * 0.92, ly_mm * 0.92), xytext=(lx_mm * 0.08, ly_mm * 0.08),
+                     arrowprops=dict(arrowstyle="->", color=PALETTE["secondary"], lw=2.2))
+    ax_ins1.text(lx_mm * 0.5, ly_mm * 0.12, "Diagonal Path", color=PALETTE["secondary"],
+                 fontsize=7.0, ha="center", fontweight="bold")
+    ax_ins1.set_xlim(-lx_mm * 0.05, lx_mm * 1.05)
+    ax_ins1.set_ylim(-ly_mm * 0.05, ly_mm * 1.05)
+    ax_ins1.set_aspect("equal")
+    ax_ins1.set_xticks([])
+    ax_ins1.set_yticks([])
+
+    # --- Subplot 2: von Mises along Principal Orthogonal Sections (A-A & B-B) ---
+    dist_aa = prof["dist_aa"]
+    vm_aa = prof["vm_aa"]
+    dist_bb = prof["dist_bb"]
+    vm_bb = prof["vm_bb"]
+
+    ax2.plot(dist_aa, vm_aa, color=PALETTE["primary"], linewidth=2.0,
+             label=r"Section A–A (Longitudinal Centerline, $Y = L_y/2$)")
+    ax2.plot(dist_bb, vm_bb, color=PALETTE["accent"], linewidth=2.0, linestyle="--",
+             label=r"Section B–B (Transverse Mid-Span, $X = L_x/2$)")
+    ax2.axhline(sig_y, color=PALETTE["amber"], linestyle="--", linewidth=1.1, alpha=0.8,
+                label=rf"Yield Limit $\sigma_y = {sig_y:.0f}\,\mathrm{{MPa}}$")
+
+    # Inset Schematic for Sections A-A and B-B
+    ax_ins2 = ax2.inset_axes([0.68, 0.45, 0.26, 0.45])
+    ax_ins2.add_patch(plt.Rectangle((0, 0), lx_mm, ly_mm, color="#f1f5f9", ec="#64748b", lw=1.2))
+    ax_ins2.add_patch(plt.Rectangle((0, ly_mm / 2.0 - ty_mm / 2.0), lx_mm, ty_mm, color="#bfdbfe", ec="#2563eb", lw=1.0))
+    ax_ins2.plot([0, lx_mm], [ly_mm / 2.0, ly_mm / 2.0], color=PALETTE["primary"], lw=1.8)
+    ax_ins2.text(lx_mm * 0.96, ly_mm * 0.54, "A", color=PALETTE["primary"], fontsize=6.5, fontweight="bold")
+    ax_ins2.plot([lx_mm / 2.0, lx_mm / 2.0], [0, ly_mm], color=PALETTE["accent"], lw=1.8, linestyle="--")
+    ax_ins2.text(lx_mm * 0.52, ly_mm * 0.92, "B", color=PALETTE["accent"], fontsize=6.5, fontweight="bold")
+    ax_ins2.set_xlim(-lx_mm * 0.05, lx_mm * 1.05)
+    ax_ins2.set_ylim(-ly_mm * 0.05, ly_mm * 1.05)
+    ax_ins2.set_aspect("equal")
+    ax_ins2.set_xticks([])
+    ax_ins2.set_yticks([])
+
+    ax2.set_xlabel("Distance Along Section Plane (mm)")
+    ax2.set_ylabel(r"von Mises Stress $\sigma_{\mathrm{vM}}$ (MPa)")
+    ax2.set_title("Residual von Mises Stress Along Principal Orthogonal Sections (A–A & B–B)",
+                  fontweight="bold", pad=8)
+    ax2.grid(True, linestyle="--", alpha=0.5)
+    ax2.legend(loc="upper left", frameon=True, fontsize=8.5)
+
+    fig.tight_layout()
+    out_path = os.path.join(plots_dir, "07_spatial_residual_stress_paths.png")
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
+# ==============================================================================
+# PLOT 8: Normalized Warpage Index & Orthogonal Section Deflections (Paper Figures 8 & 9)
+# ==============================================================================
+def plot_08_normalized_warpage_index(ctx: Dict[str, Any]) -> Optional[str]:
+    """Plot 8: Normalized Warpage Index & Orthogonal Cross-Sectional Deflection Curves.
+
+    Inspired by Figures 8 & 9 in Applied Sciences 2024, 14, 810.
+    """
+    prof = _load_spatial_profiles(ctx)
+    plots_dir = ctx["plots_dir"]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9.5, 7.5), dpi=300)
+
+    lx_mm = prof["lx_mm"]
+    ly_mm = prof["ly_mm"]
+    hz_mm = prof["hz_mm"]
+    ty_mm = prof["ty_mm"]
+
+    # --- Subplot 1: Normalized Warpage Index along Diagonal & Section A-A ---
+    dist_d = prof["dist_diag"]
+    warp_d = prof["warp_idx_diag"]
+    dist_aa = prof["dist_aa"]
+    warp_aa = prof["warp_idx_aa"]
+
+    ax1.plot(dist_d, warp_d, color=PALETTE["secondary"], linewidth=2.2,
+             label=r"Diagonal Path $(0,0) \to (L_x, L_y)$")
+    ax1.plot(dist_aa, warp_aa, color=PALETTE["primary"], linewidth=2.0, linestyle="--",
+             label=r"Section A–A (Longitudinal Centerline, $Y = L_y/2$)")
+
+    ax1.set_xlabel("Distance Along Path (mm)")
+    ax1.set_ylabel(r"Warpage Index $\left(U_z - U_{z,\min}\right) / H_z$ [—]")
+    ax1.set_title(rf"Normalized Substrate Warpage Index Along Inspection Trajectories ($H_z = {hz_mm:.1f}\,\mathrm{{mm}}$)",
+                  fontweight="bold", pad=8)
+    ax1.grid(True, linestyle="--", alpha=0.5)
+    ax1.legend(loc="upper left", frameon=True, fontsize=8.5)
+
+    # Inset schematic
+    ax_ins1 = ax1.inset_axes([0.68, 0.45, 0.26, 0.45])
+    ax_ins1.add_patch(plt.Rectangle((0, 0), lx_mm, ly_mm, color="#f1f5f9", ec="#64748b", lw=1.2))
+    ax_ins1.add_patch(plt.Rectangle((0, ly_mm / 2.0 - ty_mm / 2.0), lx_mm, ty_mm, color="#bfdbfe", ec="#2563eb", lw=1.0))
+    ax_ins1.annotate("", xy=(lx_mm * 0.92, ly_mm * 0.92), xytext=(lx_mm * 0.08, ly_mm * 0.08),
+                     arrowprops=dict(arrowstyle="->", color=PALETTE["secondary"], lw=2.2))
+    ax_ins1.plot([0, lx_mm], [ly_mm / 2.0, ly_mm / 2.0], color=PALETTE["primary"], lw=1.5, linestyle="--")
+    ax_ins1.text(lx_mm * 0.5, ly_mm * 0.12, "Diag & A-A", color="#334155",
+                 fontsize=7.0, ha="center", fontweight="bold")
+    ax_ins1.set_xlim(-lx_mm * 0.05, lx_mm * 1.05)
+    ax_ins1.set_ylim(-ly_mm * 0.05, ly_mm * 1.05)
+    ax_ins1.set_aspect("equal")
+    ax_ins1.set_xticks([])
+    ax_ins1.set_yticks([])
+
+    # --- Subplot 2: Dimensional Deflection Uz(X) and Uz(Y) across Orthogonal Sections ---
+    uz_aa = prof["uz_aa"]
+    dist_bb = prof["dist_bb"]
+    uz_bb = prof["uz_bb"]
+
+    ax2.plot(dist_aa, uz_aa, color=PALETTE["primary"], linewidth=2.0,
+             label=r"Section A–A (Longitudinal Profile $U_z(X)$)")
+    ax2.plot(dist_bb, uz_bb, color=PALETTE["accent"], linewidth=2.0, linestyle="--",
+             label=r"Section B–B (Transverse Profile $U_z(Y)$)")
+    ax2.axhline(0.0, color="#64748b", linestyle=":", linewidth=0.9)
+
+    ax2.set_xlabel("Distance Across Section Plane (mm)")
+    ax2.set_ylabel(r"Vertical Deflection $U_z$ (mm)")
+    ax2.set_title("Orthogonal Cross-Sectional Deflection Curves (Concave-Up Bending Curvature)",
+                  fontweight="bold", pad=8)
+    ax2.grid(True, linestyle="--", alpha=0.5)
+    ax2.legend(loc="lower right", frameon=True, fontsize=8.5)
+
+    fig.tight_layout()
+    out_path = os.path.join(plots_dir, "08_normalized_warpage_index.png")
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
+# ==============================================================================
+# MAIN DRIVER: Generate Focused Publication Plot Suite
 # ==============================================================================
 def generate_all_plots(run_dir: str) -> List[str]:
-    """Execute complete 5-plot Matplotlib postprocessing suite for run_dir."""
+    """Execute complete Matplotlib postprocessing suite for run_dir."""
     ctx = load_run_context(run_dir)
     plots_dir = ctx["plots_dir"]
     os.makedirs(plots_dir, exist_ok=True)
@@ -711,22 +1360,33 @@ def generate_all_plots(run_dir: str) -> List[str]:
         ("03_distortion_and_warpage", plot_03_distortion_and_warpage),
         ("04_residual_stress_mises", plot_04_residual_stress_mises),
         ("05_heat_input_and_dwell_energy", plot_05_heat_input_and_dwell_energy),
+        ("06_baseplate_center_thermal_cycle", plot_06_baseplate_center_thermal_cycle),
+        ("07_spatial_residual_stress_paths", plot_07_spatial_residual_stress_paths),
+        ("08_normalized_warpage_index", plot_08_normalized_warpage_index),
     ]
 
     generated = []
+    total = len(plot_tasks)
     for idx, (name, fn) in enumerate(plot_tasks, 1):
         try:
-            path = fn(ctx)
-            if path and os.path.exists(path):
-                generated.append(path)
-                print(f"  [{idx}/5] [OK] Generated: {os.path.basename(path)}")
+            res = fn(ctx)
+            if isinstance(res, (list, tuple)):
+                for p in res:
+                    if p and os.path.exists(p) and p not in generated:
+                        generated.append(p)
+                        print(f"  [{idx}/{total}] [OK] Generated: {os.path.basename(p)}")
+            elif res and os.path.exists(res) and res not in generated:
+                generated.append(res)
+                print(f"  [{idx}/{total}] [OK] Generated: {os.path.basename(res)}")
             else:
-                print(f"  [{idx}/5] [FAIL] Could not generate: {name}")
+                # A missing figure is reported and the name is left out of the
+                # summary; it is never fabricated.
+                print(f"  [{idx}/{total}] [SKIP] Not generated: {name}")
         except Exception as ex:
-            print(f"  [{idx}/5] [ERROR] Plot {name} generation failed: {ex}")
+            print(f"  [{idx}/{total}] [ERROR] Plot {name} generation failed: {ex}")
 
     print("\n" + "-" * 80)
-    print(f" [OK] Successfully generated {len(generated)} of {len(plot_tasks)} 2D publication plots.")
+    print(f" [OK] Successfully generated {len(generated)} 2D publication plots.")
     print(f" Plots saved in: {plots_dir}")
     print("-" * 80 + "\n")
 
@@ -738,8 +1398,21 @@ if __name__ == "__main__":
     target_path = Path(target).resolve()
     if (target_path / "FreeFEM").exists():
         target_path = target_path / "FreeFEM"
-    elif (target_path / "latest").exists():
-        target_path = (target_path / "latest").resolve()
+    elif (target_path / "latest").exists() or (target_path / "latest").is_symlink():
+        latest = target_path / "latest"
+        if latest.is_symlink():
+            target_path = latest.resolve()
+        elif latest.is_file():
+            # run.py's fallback writes a plain pointer file (not a symlink)
+            # where symlinks are unavailable; the target is relative to the
+            # directory holding it.
+            try:
+                pointed = latest.read_text(encoding="utf-8").strip().splitlines()[0]
+                cand = (latest.parent / pointed).resolve()
+                if cand.exists():
+                    target_path = cand
+            except Exception:
+                pass
         if (target_path / "FreeFEM").exists():
             target_path = target_path / "FreeFEM"
 

@@ -10,22 +10,25 @@ Provides advanced 3D rendering pipelines with PyVista as the primary default:
    - Quick orientation preset buttons (Isometric, Top, Side, Front, Reset).
 2. Native Hardware GPU OpenGL/Metal Window via PyVista / VTK:
    - Full 60 FPS interactive PyVista window with full VTK controls.
-3. Standalone High-Performance WebGL Studio (Three.js):
-   - Browser / WebKit based interactive toolpath player and heat source inspector.
 """
 
 import os
 import sys
 import json
 import math
-import webbrowser
 import subprocess
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 import numpy as np
 
 from PIL import Image, ImageTk
+
+try:
+    import vtk
+    vtk.vtkObject.GlobalWarningDisplayOff()
+except Exception:
+    pass
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -125,7 +128,7 @@ def _extract_geometry_params(params: dict):
 
     lx = get_dim_mm("lx", 150.0)           # mm
     ly_base = get_dim_mm("ly_base", 150.0) # mm
-    hz_base = get_dim_mm("hz_base", 15.0)  # mm
+    hz_base = get_dim_mm("hz_base", 5.0)   # mm (substrate plate thickness)
     ty_dep = get_dim_mm("ty_dep", 8.0)     # mm
     h_bead_first = get_dim_mm("h_bead_first", get_dim_mm("h_bead", 4.0))     # mm
     remelt_ratio = float(params.get("remelt_ratio", 0.80))
@@ -162,7 +165,8 @@ def _extract_geometry_params(params: dict):
     dy_base = ly_base / ny_base
     dz_base = hz_base / nz_base
 
-    # Heat Source Dimensions (mm)
+    # Heat Source Model & Dimensions (mm)
+    heat_source = str(params.get("heat_source", "goldak")).lower()
     bG = float(params.get("bG", 7.0e-3))
     a_hs = bG * 1000.0 if bG < 1.0 else bG
     cG = float(params.get("cG", 3.0e-3))
@@ -171,6 +175,26 @@ def _extract_geometry_params(params: dict):
     cf_hs = af * 1000.0 if af < 1.0 else af
     ar = float(params.get("ar", 16.0e-3))
     cr_hs = ar * 1000.0 if ar < 1.0 else ar
+
+    R_beam = float(params.get("R_beam", 5.0e-3))
+    R_beam_mm = R_beam * 1000.0 if R_beam < 1.0 else R_beam
+    R_spot = float(params.get("R_spot", 3.0e-3))
+    R_spot_mm = R_spot * 1000.0 if R_spot < 1.0 else R_spot
+    r_top = float(params.get("rt", params.get("r_top", 3.0e-3)))
+    rt_mm = r_top * 1000.0 if r_top < 1.0 else r_top
+    r_bot = float(params.get("rb", params.get("r_bot", 1.0e-3)))
+    rb_mm = r_bot * 1000.0 if r_bot < 1.0 else r_bot
+    d_pen = float(params.get("d_pen", params.get("depth_cone", 5.0e-3)))
+    d_pen_mm = d_pen * 1000.0 if d_pen < 1.0 else d_pen
+
+    a_band = float(params.get("a_band", 10.0e-3))
+    a_band_mm = a_band * 1000.0 if a_band < 1.0 else a_band
+    b_band = float(params.get("b_band", 5.0e-3))
+    b_band_mm = b_band * 1000.0 if b_band < 1.0 else b_band
+    c_band = float(params.get("c_band", 3.0e-3))
+    c_band_mm = c_band * 1000.0 if c_band < 1.0 else c_band
+    R_activate = float(params.get("R_activate", 10.0e-3))
+    R_act_mm = R_activate * 1000.0 if R_activate < 1.0 else R_activate
 
     I_weld = float(params.get("I_weld", 200.0))
     U_weld = float(params.get("U_weld", 24.0))
@@ -198,14 +222,26 @@ def _extract_geometry_params(params: dict):
         "total_hex": total_hex, "total_tets": total_tets, "total_nodes": total_nodes,
         "dx_dep": dx_dep, "dy_dep": dy_dep, "dz_dep": dz_dep,
         "dx_base": dx_base, "dy_base": dy_base, "dz_base": dz_base,
+        "heat_source": heat_source,
         "a_hs": a_hs, "b_hs": b_hs, "cf_hs": cf_hs, "cr_hs": cr_hs,
+        "R_beam": R_beam_mm, "R_spot": R_spot_mm,
+        "rt": rt_mm, "rb": rb_mm, "d_pen": d_pen_mm,
+        "a_band": a_band_mm, "b_band": b_band_mm, "c_band": c_band_mm,
+        "R_activate": R_act_mm,
         "Q_net": Q_net, "heat_input": heat_input, "q0_f": q0_f, "q0_r": q0_r,
         "v_scan": v_scan_mm_s
     }
 
 
-def load_any_cad_geometry(filepath: str):
+def load_any_cad_geometry(filepath: str, sub_hz_mm: float = None):
     """Safely loads any CAD geometry (.stl, .step, .stp, .iges, .igs, .ply, .obj).
+
+    Args:
+        filepath: CAD file to load.
+        sub_hz_mm: substrate plate thickness [mm] the part is placed on top of.
+            None -> 5 mm, the framework default (matches the solver's hz_base).
+            Callers should pass the solver's hz_base so the preview sits
+            exactly where the mesh/solver puts it.
 
     Returns:
         (verts, faces, info) where verts is (N,3) vertex array, faces is (M,3)
@@ -250,10 +286,13 @@ def load_any_cad_geometry(filepath: str):
                 "xmax": float(bmax[0]), "ymax": float(bmax[1]), "zmax": float(bmax[2]),
             }
 
-            # Enclosure constraints: Substrate 150x150x15mm, Build volume 150mm above substrate
+            # Enclosure constraints: the substrate the part is placed on, plus
+            # a 150 mm build height above it. SUB_HZ must match the solver's
+            # hz_base, otherwise the preview floats above (or sinks into) the
+            # plate the mesh was built on.
             SUB_LX = 150.0
             SUB_LY = 150.0
-            SUB_HZ = 15.0
+            SUB_HZ = float(sub_hz_mm) if sub_hz_mm else 5.0
             BUILD_HEIGHT = 150.0
             V_ENCLOSURE = SUB_LX * SUB_LY * BUILD_HEIGHT  # 3,375,000 mm^3
             MAX_OCCUPIED_VOL = 0.75 * V_ENCLOSURE       # 2,531,250 mm^3 (75% max volume)
@@ -266,8 +305,8 @@ def load_any_cad_geometry(filepath: str):
                 scale_applied = min(s_vol, s_dim)
                 verts = verts * scale_applied
 
-            # Auto-place correctly on top of 150x150x15mm base plate:
-            # Centered in X and Y, bottom resting on top of substrate (Z = 15.0 mm)
+            # Auto-place correctly on top of the substrate plate:
+            # Centered in X and Y, bottom resting on top of it (Z = SUB_HZ).
             bmin = verts.min(axis=0)
             bmax = verts.max(axis=0)
             center_x = (bmin[0] + bmax[0]) / 2.0
@@ -348,26 +387,111 @@ gmsh.finalize()
     return None, None, None
 
 
-def export_interactive_webgl(params: dict, out_html: str = "./waam_output/waam_3d_studio.html") -> str:
-    """Generate high-performance interactive 3D WebGL Studio HTML application with Three.js."""
-    from gui.widgets.waam_3d_studio import generate_waam_3d_studio_html
-    gcode_target = params.get("gcode_file") or params.get("mesh_file")
-    return generate_waam_3d_studio_html(params, gcode_path=gcode_target, output_html_path=out_html)
+def _sweep_stale_pyvista_params(max_age_days: float = 7.0):
+    """Delete orphaned runner JSON/NPZ files from crashed viewer launches."""
+    import tempfile as _tf
+    import time as _time
+    try:
+        cutoff = _time.time() - max_age_days * 86400.0
+        for name in os.listdir(_tf.gettempdir()):
+            if (name.startswith("waam_pyvista_")
+                    and name.endswith((".json", ".npz"))):
+                full = os.path.join(_tf.gettempdir(), name)
+                try:
+                    if os.path.getmtime(full) < cutoff:
+                        os.remove(full)
+                except OSError:
+                    pass
+    except OSError:
+        pass
 
 
 def launch_pyvista_gpu_window(params: dict):
     """Launch native 60fps hardware-accelerated OpenGL/Metal 3D window via PyVista/VTK in an isolated process."""
     import tempfile
+    import atexit
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tf:
-        json.dump(params, tf)
+    # Normalise dimensions to SI metres BEFORE serialising: the runner script
+    # used to re-apply the old `< 1.0 means metres` guess to the raw dict,
+    # which rescaled genuine sub-mm SI values by x1000 a second time.
+    try:
+        from mesh.units import dim_to_m
+        norm = dict(params)
+        for _k in ("lx", "ly_base", "hz_base", "ty_dep", "h_bead",
+                   "h_bead_first", "h_bead_subseq"):
+            if _k in norm and norm[_k] is not None:
+                try:
+                    norm[_k] = dim_to_m(norm[_k], _k)
+                except ValueError:
+                    pass
+    except Exception:
+        norm = params
+
+    # Package root (the directory that CONTAINS gui/, mesh/, ...). The child
+    # is started with `python -c`, whose sys.path[0] is the shell CWD -- not
+    # this file's directory -- so the framework root must be injected there.
+    fw_root = str(Path(__file__).resolve().parents[2])
+
+    _sweep_stale_pyvista_params()
+    tmp_cad_path = None
+    # Pre-load the CAD surface in THIS process and hand the child plain
+    # verts/faces arrays. The old child-side `from gui.widgets.mesh_viewer_3d
+    # import load_any_cad_geometry` failed with "No module named 'gui'"
+    # whenever the GUI was launched from outside the framework directory (the
+    # `python -c` subprocess inherits the shell CWD, not the package root), so
+    # the PyVista window silently fell back to the parametric bead wall and
+    # never showed the imported geometry.
+    hz_base_mm = None
+    try:
+        hz_base_mm = float(norm.get("hz_base", 0.005)) * 1000.0
+    except (TypeError, ValueError):
+        _cad_file = (norm.get("stl_file") or norm.get("mesh_file") or "")
+    _cad_exts = ('.stl', '.step', '.stp', '.iges', '.igs', '.ply', '.obj')
+    if _cad_file and str(_cad_file).lower().endswith(('.mesh', '.mesh3')):
+        _cand_stem = Path(_cad_file).stem
+        if _cand_stem.startswith("imported_"):
+            _cand_stem = _cand_stem[len("imported_"):]
+        for _fld in [Path(_cad_file).parent, Path("./stl"), Path(fw_root) / "stl"]:
+            for _ext in _cad_exts:
+                _cand = _fld / (_cand_stem + _ext)
+                if _cand.exists():
+                    _cad_file = str(_cand)
+                    break
+            if str(_cad_file).lower().endswith(_cad_exts):
+                break
+    if _cad_file and os.path.exists(str(_cad_file)) and \
+            str(_cad_file).lower().endswith(_cad_exts):
+        try:
+            verts, faces, cad_info = load_any_cad_geometry(
+                str(_cad_file), sub_hz_mm=hz_base_mm)
+
+            if verts is not None and faces is not None:
+                with tempfile.NamedTemporaryFile(suffix=".npz", delete=False,
+                                                 prefix="waam_pyvista_") as tf_cad:
+                    np.savez_compressed(tf_cad, verts=np.asarray(verts, dtype=np.float64),
+                                        faces=np.asarray(faces, dtype=np.int64))
+                    tmp_cad_path = tf_cad.name
+                atexit.register(lambda p=tmp_cad_path: os.path.exists(p) and os.remove(p))
+                norm["viewer_cad_npz"] = tmp_cad_path
+                norm["viewer_cad_bbox_mm"] = cad_info.get("bbox_mm")
+                norm["viewer_cad_name"] = os.path.basename(str(_cad_file))
+        except Exception as _cad_err:
+            print("[CAD Runner View Error]", _cad_err)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False,
+                                     prefix="waam_pyvista_") as tf:
+        json.dump(norm, tf)
         tmp_params_path = tf.name
+    # The child removes this file when its window closes; a crash before that
+    # point used to leak one JSON per launch into the temp dir forever.
+    atexit.register(lambda p=tmp_params_path: os.path.exists(p) and os.remove(p))
 
     runner_script = f'''
 import sys
 import json
 import os
 import math
+import numpy as np
 
 with open({repr(tmp_params_path)}) as f:
     params = json.load(f)
@@ -381,27 +505,30 @@ except ImportError:
 plotter = pv.Plotter(title="WAAM 3D Workpiece & Heat Source — Hardware GPU (PyVista / VTK)")
 plotter.set_background("#090d16", top="#0f172a")
 
-def _get_dim(key, default_val):
-    val = float(params.get(key, default_val))
-    return val * 1000.0 if val < 1.0 else val
+def _get_dim(key, default_m):
+    # params arrive normalised to SI metres (see the parent); display is mm.
+    try:
+        return float(params.get(key, default_m)) * 1000.0
+    except (TypeError, ValueError):
+        return float(default_m) * 1000.0
 
-lx = _get_dim("lx", 150.0)
-ly_base = _get_dim("ly_base", 150.0)
-hz_base = _get_dim("hz_base", 15.0)
+lx = _get_dim("lx", 0.150)
+ly_base = _get_dim("ly_base", 0.150)
+hz_base = _get_dim("hz_base", 0.005)
 build_height = 150.0
-ty_dep = _get_dim("ty_dep", 8.0)
-h_bead_first = _get_dim("h_bead_first", _get_dim("h_bead", 4.0))
+ty_dep = _get_dim("ty_dep", 0.008)
+h_bead_first = _get_dim("h_bead", 0.004)
+if "h_bead_first" in params:
+    h_bead_first = _get_dim("h_bead_first", 0.004)
 remelt_ratio = float(params.get("remelt_ratio", 0.80))
-h_bead_subseq = float(params.get("h_bead_subseq", h_bead_first * remelt_ratio))
-if h_bead_subseq < 0.1:
-    h_bead_subseq *= 1000.0
+h_bead_subseq = _get_dim("h_bead_subseq", h_bead_first / 1000.0 * remelt_ratio)
 n_layers = max(int(float(params.get("n_layers", 10))), 1)
 hz_dep = h_bead_first if n_layers <= 1 else (h_bead_first + (n_layers - 1) * h_bead_subseq)
 y_dep_centre = ly_base / 2.0
 y_dep_left = y_dep_centre - ty_dep / 2.0
 y_dep_right = y_dep_centre + ty_dep / 2.0
 
-# 1. Substrate Plate Solid (150x150x15mm)
+# 1. Substrate Plate Solid (lx x ly_base x hz_base, default 150x150x5mm)
 sub_box = pv.Box(bounds=(0, lx, 0, ly_base, 0, hz_base))
 plotter.add_mesh(sub_box, color="#38bdf8", opacity=0.75, show_edges=True, edge_color="#0284c7", line_width=1.0)
 
@@ -410,27 +537,53 @@ enc_box = pv.Box(bounds=(0, lx, 0, ly_base, hz_base, hz_base + build_height))
 plotter.add_mesh(enc_box, color="#38bdf8", opacity=0.10, style="wireframe", line_width=1.2)
 
 # 2. Deposited Geometry (CAD Model or Parametric Beads)
-cad_path = params.get("stl_file") or params.get("mesh_file")
+# Preferred source: the verts/faces the parent already loaded (immune to CWD /
+# sys.path problems). Fallback: load the file here, with the framework root
+# forced onto sys.path so `import gui...` works from any launch directory.
 has_cad_runner = False
-if cad_path and os.path.exists(cad_path):
-    ext = os.path.splitext(cad_path)[1].lower()
-    if ext in ('.stl', '.step', '.stp', '.iges', '.igs', '.ply', '.obj'):
-        try:
-            from gui.widgets.mesh_viewer_3d import load_any_cad_geometry
-            import numpy as np
-            verts, faces, info = load_any_cad_geometry(cad_path)
-            if verts is not None and faces is not None:
-                faces_pv = np.column_stack([np.full(len(faces), 3, dtype=np.int64), faces]).ravel()
-                cad_poly = pv.PolyData(verts, faces_pv)
-                cad_poly['Z (mm)'] = verts[:, 2]
-                plotter.add_mesh(cad_poly, scalars='Z (mm)', cmap='plasma', opacity=0.90, show_edges=True, edge_color='#7c2d12', line_width=0.8, scalar_bar_args={{"title": "CAD Height Z (mm)"}})
-                has_cad_runner = True
-                bb = info["bbox_mm"]
+_cad_npz = params.get("viewer_cad_npz")
+_cad_bbox = params.get("viewer_cad_bbox_mm")
+if _cad_npz and os.path.exists(_cad_npz):
+    try:
+        _data = np.load(_cad_npz)
+        verts = np.asarray(_data["verts"], dtype=np.float64)
+        faces = np.asarray(_data["faces"], dtype=np.int64)
+        if verts.size and faces.size:
+            faces_pv = np.column_stack([np.full(len(faces), 3, dtype=np.int64), faces]).ravel()
+            cad_poly = pv.PolyData(verts, faces_pv)
+            cad_poly['Z (mm)'] = verts[:, 2]
+            plotter.add_mesh(cad_poly, scalars='Z (mm)', cmap='plasma', opacity=0.90, show_edges=True, edge_color='#7c2d12', line_width=0.8, scalar_bar_args={{"title": "CAD Height Z (mm)"}})
+            has_cad_runner = True
+            if _cad_bbox:
+                bb = _cad_bbox
                 x_torch = (bb["xmin"] + bb["xmax"]) / 2.0
                 y_torch = (bb["ymin"] + bb["ymax"]) / 2.0
                 z_torch = bb["zmax"]
-        except Exception as err:
-            print("[CAD Runner View Error]", err)
+    except Exception as err:
+        print("[CAD Runner View Error]", err)
+
+if not has_cad_runner:
+    cad_path = params.get("stl_file") or params.get("mesh_file")
+    if cad_path and os.path.exists(cad_path):
+        ext = os.path.splitext(cad_path)[1].lower()
+        if ext in ('.stl', '.step', '.stp', '.iges', '.igs', '.ply', '.obj'):
+            try:
+                if {repr(fw_root)} not in sys.path:
+                    sys.path.insert(0, {repr(fw_root)})
+                from gui.widgets.mesh_viewer_3d import load_any_cad_geometry
+                verts, faces, info = load_any_cad_geometry(cad_path)
+                if verts is not None and faces is not None:
+                    faces_pv = np.column_stack([np.full(len(faces), 3, dtype=np.int64), faces]).ravel()
+                    cad_poly = pv.PolyData(verts, faces_pv)
+                    cad_poly['Z (mm)'] = verts[:, 2]
+                    plotter.add_mesh(cad_poly, scalars='Z (mm)', cmap='plasma', opacity=0.90, show_edges=True, edge_color='#7c2d12', line_width=0.8, scalar_bar_args={{"title": "CAD Height Z (mm)"}})
+                    has_cad_runner = True
+                    bb = info["bbox_mm"]
+                    x_torch = (bb["xmin"] + bb["xmax"]) / 2.0
+                    y_torch = (bb["ymin"] + bb["ymax"]) / 2.0
+                    z_torch = bb["zmax"]
+            except Exception as err:
+                print("[CAD Runner View Error]", err)
 
 if not has_cad_runner:
     layer_colors = ["#f97316", "#fb923c", "#ea580c", "#d97706"]
@@ -447,6 +600,12 @@ if not has_cad_runner:
     x_torch = lx * 0.55
     y_torch = y_dep_centre
     z_torch = hz_base + hz_dep
+
+# Active Heat Source Semi-Axes
+a_hs = _get_dim("bG", 7.0)
+b_hs = _get_dim("cG", 4.0)
+cf_hs = _get_dim("af", 8.0)
+cr_hs = _get_dim("ar", 20.0)
 
 # Front semi-ellipsoid
 sph_f = pv.Sphere(radius=1.0, phi_resolution=24, theta_resolution=24)
@@ -478,6 +637,11 @@ plotter.show()
 
 try:
     os.remove({repr(tmp_params_path)})
+except Exception:
+    pass
+try:
+    if params.get("viewer_cad_npz") and os.path.exists(params["viewer_cad_npz"]):
+        os.remove(params["viewer_cad_npz"])
 except Exception:
     pass
 '''
@@ -544,14 +708,6 @@ class EmbeddedMeshViewport(tk.Frame):
         )
         refresh_btn.pack(side=tk.LEFT, padx=3)
         self._vp_buttons.append(("info", refresh_btn))
-
-        webgl_btn = tk.Button(
-            self.ribbon, text="Open WebGL Studio",
-            font=FONT_SMALL, bg="#475569", fg="white",
-            relief=tk.FLAT, padx=8, pady=3, command=self._launch_webgl
-        )
-        webgl_btn.pack(side=tk.LEFT, padx=3)
-        self._vp_buttons.append(("muted", webgl_btn))
 
         # 2. Camera Controls & Status Bar
         self.cam_bar = tk.Frame(self, bg="#1e293b", padx=8, pady=4)
@@ -821,7 +977,7 @@ class EmbeddedMeshViewport(tk.Frame):
             cad_f = self.params.get("stl_file") or self.params.get("mesh_file")
             fname = os.path.basename(cad_f)
             self.tp_summary_lbl.config(
-                text=f"Loaded CAD: {fname}\nLayers: {g['n_layers']} | Base: 150x150x15 mm\n3D CAD Viewport active."
+                text=f"Loaded CAD: {fname}\nLayers: {g['n_layers']} | Base: {g['lx']:.0f}x{g['ly_base']:.0f}x{g['hz_base']:.0f} mm\n3D CAD Viewport active."
             )
         else:
             self.tp_summary_lbl.config(
@@ -882,34 +1038,31 @@ class EmbeddedMeshViewport(tk.Frame):
 
     def _launch_gpu(self):
         """Launch native standalone PyVista hardware-accelerated VTK window."""
-        launch_pyvista_gpu_window(self.params)
+        params = self._current_params()
+        launch_pyvista_gpu_window(params)
 
-    def _launch_webgl(self):
-        """Optionally launch WebGL Three.js studio window."""
-        try:
-            from gui.widgets.waam_3d_studio import launch_waam_3d_studio_window
-            params = dict(self.params)
-            app = getattr(self, "app", None) or getattr(self.master, "app", None)
-            if app and hasattr(app, "_collect_params"):
-                params = app._collect_params()
-                self.update_mesh(params)
-
-            run_dir = getattr(app, "current_run_dir", None) if app else None
-            if not run_dir or not os.path.exists(run_dir):
-                if app and hasattr(app, "_get_active_or_latest_run_dir"):
-                    run_dir = app._get_active_or_latest_run_dir()
-                else:
-                    run_dir = params.get("output_dir", "./waam_output")
-            if app and hasattr(app, "_fem_vis_dir"):
-                vis_dir = app._fem_vis_dir(run_dir)
-            else:
-                vis_dir = os.path.join(run_dir, "FreeFEM", "visual_outputs")
-            os.makedirs(vis_dir, exist_ok=True)
-            html_path = os.path.join(vis_dir, "waam_3d_studio.html")
-
-            launch_waam_3d_studio_window(params, gcode_path=params.get("gcode_file"), output_html_path=html_path)
-        except Exception as e:
-            messagebox.showerror("3D Studio Error", str(e))
+    def _current_params(self) -> dict:
+        """Latest parameters for the viewers: live app params + last-known
+        CAD/toolpath paths. `_collect_params()` re-derives stl_file from the
+        app state, but a mesh selected outside it (or a gcode loaded earlier)
+        must not be dropped, or the 3D window silently reverts to the
+        parametric bead wall instead of the custom geometry."""
+        params = dict(self.params or {})
+        app = getattr(self, "app", None) or getattr(self.master, "app", None)
+        if app and hasattr(app, "_collect_params"):
+            try:
+                collected = app._collect_params()
+                if collected:
+                    params = collected
+            except Exception:
+                pass
+        for key in ("stl_file", "mesh_file", "gcode_file"):
+            if not params.get(key):
+                params[key] = (self.params or {}).get(key)
+        if not params.get("stl_file") and app and hasattr(app, "loaded_stl_path") and app.loaded_stl_path:
+            params["stl_file"] = app.loaded_stl_path
+        self.params = params
+        return params
 
     def _redraw(self):
         if not self.params:
@@ -941,12 +1094,18 @@ class EmbeddedMeshViewport(tk.Frame):
 
         # 2. Deposited Geometry (CAD Model or Parametric Beads)
         cad_path = self.params.get("stl_file") or self.params.get("mesh_file")
+        # A Medit .mesh cannot be previewed as a surface; if its source STL
+        # sits next to it, fall back to that instead of the parametric beads.
+        if cad_path and str(cad_path).lower().endswith((".mesh", ".mesh3")):
+            _sib = str(Path(cad_path).with_suffix(".stl"))
+            if os.path.exists(_sib):
+                cad_path = _sib
         has_cad = False
         if cad_path and os.path.exists(cad_path):
             ext = os.path.splitext(cad_path)[1].lower()
             if ext in ('.stl', '.step', '.stp', '.iges', '.igs', '.ply', '.obj'):
                 try:
-                    verts, faces, info = load_any_cad_geometry(cad_path)
+                    verts, faces, info = load_any_cad_geometry(cad_path, sub_hz_mm=g["hz_base"])
                     if verts is not None and faces is not None:
                         faces_pv = np.column_stack([np.full(len(faces), 3, dtype=np.int64), faces]).ravel()
                         cad_poly = pv.PolyData(verts, faces_pv)
@@ -994,22 +1153,53 @@ class EmbeddedMeshViewport(tk.Frame):
             x_torch = g["lx"] * 0.55
             y_torch = g["y_dep_centre"]
             z_torch = g["hz_base"] + g["hz_dep"]
-        a = g["a_hs"]
-        b = g["b_hs"]
-        cf = g["cf_hs"]
-        cr = g["cr_hs"]
+        hs_type = g.get("heat_source", "goldak")
+        if hs_type == "gaussian_vol":
+            r_b = max(g.get("R_beam", 5.0), 0.5)
+            cyl = pv.Cylinder(center=(x_torch, y_torch, z_torch - 2.0), direction=(0, 0, -1), radius=r_b, height=12.0, resolution=24)
+            plotter.add_mesh(cyl, color="#a855f7", opacity=0.70, show_edges=True, edge_color="#7e22ce")
+        elif hs_type == "gaussian_surf":
+            r_s = max(g.get("R_spot", 3.0), 0.5)
+            disc = pv.Cylinder(center=(x_torch, y_torch, z_torch), direction=(0, 0, 1), radius=r_s, height=0.4, resolution=24)
+            plotter.add_mesh(disc, color="#a855f7", opacity=0.85, show_edges=True, edge_color="#7e22ce")
+        elif hs_type == "conical":
+            rt = max(g.get("rt", 3.0), 0.5)
+            rb = max(g.get("rb", 1.0), 0.2)
+            d_p = max(g.get("d_pen", 5.0), 1.0)
+            cone = pv.Cone(center=(x_torch, y_torch, z_torch - d_p / 2.0), direction=(0, 0, -1), height=d_p, radius=rt, resolution=24)
+            plotter.add_mesh(cone, color="#ec4899", opacity=0.70, show_edges=True, edge_color="#be185d")
+        elif hs_type == "uniform":
+            ab = max(g.get("a_band", 10.0), 1.0)
+            bb = max(g.get("b_band", 5.0), 1.0)
+            cb = max(g.get("c_band", 3.0), 1.0)
+            u_box = pv.Box(bounds=(x_torch - ab, x_torch + ab, y_torch - bb, y_torch + bb, z_torch - cb, z_torch))
+            plotter.add_mesh(u_box, color="#10b981", opacity=0.65, show_edges=True, edge_color="#047857")
+        elif hs_type == "prescribed":
+            r_act = max(g.get("R_activate", 10.0), 1.0)
+            p_sph = pv.Sphere(radius=r_act, center=(x_torch, y_torch, z_torch), phi_resolution=24, theta_resolution=24)
+            plotter.add_mesh(p_sph, color="#6366f1", opacity=0.55, show_edges=True, edge_color="#4338ca")
+        elif hs_type in ("p48_surface", "p48"):
+            i_w = max(g.get("I_weld", 150.0), 10.0)
+            sig_q = 6.205e-4 * (i_w ** 0.28) * 1000.0
+            arc_disc = pv.Cylinder(center=(x_torch, y_torch, z_torch), direction=(0, 0, 1), radius=sig_q, height=0.6, resolution=24)
+            plotter.add_mesh(arc_disc, color="#38bdf8", opacity=0.75, show_edges=True, edge_color="#0284c7")
+            drop_sph = pv.Sphere(radius=sig_q * 0.4, center=(x_torch, y_torch, z_torch - 1.5), phi_resolution=16, theta_resolution=16)
+            plotter.add_mesh(drop_sph, color="#f97316", opacity=0.85, show_edges=True, edge_color="#c2410c")
+        else:
+            a = max(g.get("a_hs", 7.0), 0.5)
+            b = max(g.get("b_hs", 4.0), 0.5)
+            cf = max(g.get("cf_hs", 8.0), 0.5)
+            cr = max(g.get("cr_hs", 20.0), 0.5)
 
-        # Front semi-ellipsoid
-        sph_f = pv.Sphere(radius=1.0, phi_resolution=24, theta_resolution=24)
-        sph_f.scale((cf, a, b), inplace=True)
-        sph_f.translate((x_torch, y_torch, z_torch), inplace=True)
-        plotter.add_mesh(sph_f, color="#facc15", opacity=0.65, show_edges=True, edge_color="#ca8a04")
+            sph_f = pv.Sphere(radius=1.0, phi_resolution=24, theta_resolution=24)
+            sph_f.scale((cf, a, b), inplace=True)
+            sph_f.translate((x_torch, y_torch, z_torch), inplace=True)
+            plotter.add_mesh(sph_f, color="#facc15", opacity=0.65, show_edges=True, edge_color="#ca8a04")
 
-        # Rear semi-ellipsoid
-        sph_r = pv.Sphere(radius=1.0, phi_resolution=24, theta_resolution=24)
-        sph_r.scale((cr, a, b), inplace=True)
-        sph_r.translate((x_torch, y_torch, z_torch), inplace=True)
-        plotter.add_mesh(sph_r, color="#ef4444", opacity=0.55, show_edges=True, edge_color="#991b1b")
+            sph_r = pv.Sphere(radius=1.0, phi_resolution=24, theta_resolution=24)
+            sph_r.scale((cr, a, b), inplace=True)
+            sph_r.translate((x_torch, y_torch, z_torch), inplace=True)
+            plotter.add_mesh(sph_r, color="#ef4444", opacity=0.55, show_edges=True, edge_color="#991b1b")
 
         # Torch Nozzle Downward Arrow
         arrow = pv.Arrow(start=(x_torch, y_torch, z_torch + 18.0), direction=(0, 0, -1), scale=15.0)
@@ -1027,18 +1217,20 @@ class EmbeddedMeshViewport(tk.Frame):
             grid="front", location="outer"
         )
 
-        # Apply Camera View Preset (reset first, then orbit offsets)
+        # Apply Camera View Preset
         if self.cam_preset == "top":
-            plotter.view_xy()
+            plotter.view_xy(render=False)
+            plotter.camera.up = (0.0, 1.0, 0.0)
         elif self.cam_preset == "side":
-            plotter.view_xz()
+            plotter.view_xz(render=False)
+            plotter.camera.up = (0.0, 0.0, 1.0)
         elif self.cam_preset == "front":
-            plotter.view_yz()
+            plotter.view_yz(render=False)
+            plotter.camera.up = (0.0, 0.0, 1.0)
         else: # "iso"
-            plotter.view_isometric()
+            plotter.view_isometric(render=False)
 
-        plotter.reset_camera()
-        # Apply Interactive Orbit & Zoom AFTER reset so drag state is kept
+        # Apply Interactive Orbit & Zoom
         if self.cam_azimuth != 0.0:
             plotter.camera.azimuth = self.cam_azimuth
         if self.cam_elevation != 0.0:

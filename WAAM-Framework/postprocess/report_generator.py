@@ -18,6 +18,8 @@ import sys
 import json
 import glob
 import math
+import re
+import csv
 import shutil
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -76,21 +78,175 @@ def _find_stl(*dirs: Path) -> Optional[Path]:
     return None
 
 
-def generate_thermocouple_plot(run_dir: Path, out_path: Path) -> Path:
+def _read_csv_frame_times(run_dir: Path, n_expected: int) -> Optional[List[float]]:
+    """Return the real per-frame times from the solver's waam_data.csv, or None.
+
+    waam_data.csv has one row per saved frame, in the same order the T_*.vtu files
+    were written, so its time_s column is the authoritative abscissa when a PVD
+    timestep is unavailable. Returns None if the CSV is absent or unparsable so
+    callers can fall back to an explicitly-labelled frame index.
     """
-    Generate the broken-axis substrate thermocouple plot at Z = 0, 1, 2, 3, 4 mm.
+    for cand in (run_dir / "waam_data.csv",
+                 run_dir.parent / "FreeFEM" / "waam_data.csv"):
+        try:
+            if not cand.exists():
+                continue
+            times = []
+            with open(cand) as f:
+                header = f.readline()
+                if "time_s" not in header:
+                    continue
+                for line in f:
+                    parts = line.split(",")
+                    if not parts:
+                        continue
+                    try:
+                        times.append(float(parts[0]))
+                    except ValueError:
+                        continue
+            if len(times) >= n_expected:
+                return times[:n_expected] if n_expected > 0 else times
+            if times:
+                return times
+        except OSError:
+            continue
+    return None
+
+
+def _load_probe_csv(run_dir: Path):
+    """Load the solver-written probe history, or None if the run has none.
+
+    probe_points.csv / probe_paths.csv are written by the generated .edp and carry
+    the true simulated time for every sample, which is strictly better than
+    re-sampling VTU frames (whose time axis is only known per saved frame).
+    """
+    def _load(name):
+        for cand in (run_dir / name, run_dir.parent / "FreeFEM" / name):
+            try:
+                if cand.exists():
+                    with open(cand) as f:
+                        return list(csv.DictReader(f))
+            except OSError:
+                continue
+        return None
+
+    return _load("probe_points.csv"), _load("probe_paths.csv")
+
+
+def generate_probe_history_plots(run_dir: Path, outdir: Path) -> list:
+    """Build history plots from the solver's own probe output.
+
+    Returns the list of PNG files written (empty when no probes were requested),
+    so the caller can include them in the report and skip them otherwise.
+    """
+    from core.postprocess.output_manager import canonical_run_dir
+    pts, paths = _load_probe_csv(Path(canonical_run_dir(str(run_dir))))
+    made = []
+    if not pts and not paths:
+        return made
+
+    plt.rcParams.update({"figure.facecolor": "white", "axes.facecolor": "white"})
+
+    if pts:
+        fig, ax = plt.subplots(figsize=(11, 5.2), dpi=300)
+        groups = {}
+        for r in pts:
+            try:
+                groups.setdefault(int(float(r["point"])), []).append(r)
+            except (KeyError, ValueError):
+                continue
+        cmap = plt.get_cmap("viridis")
+        n = max(1, len(groups))
+        for i, pid in enumerate(sorted(groups)):
+            rows = sorted(groups[pid], key=lambda r: float(r["t_s"]))
+            t = [float(r["t_s"]) for r in rows]
+            T = [float(r["Temp_C"]) for r in rows]
+            z = float(rows[0].get("z_m", 0.0)) * 1000.0
+            ax.plot(t, T, lw=2.0, color=cmap(i / max(n - 1, 1)),
+                    label=f"point {pid}  (x={float(rows[0].get('x_m', 0))*1000:.0f} mm, z={z:.1f} mm)")
+        ax.set_xlabel("Simulated time [s]", fontweight="bold")
+        ax.set_ylabel("Temperature [°C]", fontweight="bold")
+        ax.set_title("Solver-Sampled Probe-Point Temperature Histories", fontweight="bold")
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=8, ncol=2)
+        f = outdir / "06_probe_point_history.png"
+        fig.savefig(f, bbox_inches="tight")
+        plt.close(fig)
+        made.append(f)
+
+    if paths:
+        # One figure per path: temperature and cooling rate vs arc length, using
+        # the final recorded time so the plot shows the end-of-build state.
+        pgroups = {}
+        for r in paths:
+            try:
+                pgroups.setdefault(int(float(r["path"])), []).append(r)
+            except (KeyError, ValueError):
+                continue
+        for pid, rows in sorted(pgroups.items()):
+            rows.sort(key=lambda r: float(r["t_s"]))
+            last_t = max(float(r["t_s"]) for r in rows)
+            snap = [r for r in rows if abs(float(r["t_s"]) - last_t) < 1e-9]
+            if not snap:
+                continue
+            snap.sort(key=lambda r: float(r["s_arc_m"]))
+            s_mm = [float(r["s_arc_m"]) * 1000.0 for r in snap]
+            T = [float(r["Temp_C"]) for r in snap]
+            cr = [abs(float(r["CoolingRate_C_per_s"])) for r in snap]
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7), dpi=300,
+                                           sharex=True, gridspec_kw={"hspace": 0.12})
+            ax1.plot(s_mm, T, lw=2.2, color="#b91c1c")
+            ax1.set_ylabel("Temperature [°C]", fontweight="bold")
+            ax1.set_title(f"Probe Path {pid}: final thermal state at t = {last_t:.1f} s",
+                          fontweight="bold")
+            ax1.grid(alpha=0.3)
+            ax2.plot(s_mm, cr, lw=2.2, color="#1d4ed8")
+            ax2.set_xlabel("Arc length along path [mm]", fontweight="bold")
+            ax2.set_ylabel("|Cooling rate| [°C/s]", fontweight="bold")
+            ax2.grid(alpha=0.3)
+            fig.savefig(outdir / f"07_probe_path_{pid}_profile.png", bbox_inches="tight")
+            plt.close(fig)
+            made.append(outdir / f"07_probe_path_{pid}_profile.png")
+
+    return made
+
+
+def generate_thermocouple_plot(run_dir: Path, out_path: Path,
+                                params: dict = None) -> Path:
+    """
+    Generate the broken-axis substrate thermocouple plot at 5 depths spanning
+    the real substrate thickness.
     """
     vtu_files = sorted(glob.glob(str(run_dir / "visual_outputs" / "T_*.vtu")))
     time_series = []
     tc_data = {0: [], 1: [], 2: [], 3: [], 4: []}
 
+    # Thermocouple stations are placed at the ACTUAL part centre and real
+    # substrate thickness. They used to be hardcoded at (0.075, 0.075) mm -- the
+    # centre of a 150 mm plate -- so on any other geometry the "thermocouples"
+    # sampled air, and on a thin plate the fixed 0..4 mm ladder never reached
+    # the deposit.
+    params = params or {}
+    try:
+        _lx = float(params.get("lx", 0.150))
+        _ly = float(params.get("ly_base", _lx))
+        _hz = float(params.get("hz_base", 0.005))
+    except (TypeError, ValueError):
+        _lx, _ly, _hz = 0.150, 0.150, 0.005
+    _xc = _ly and float(params.get("_tc_x_m", _lx / 2.0))
+    _yc = float(params.get("_tc_y_m", _ly / 2.0))
     tc_points = np.array([
-        [0.075, 0.075, 0.000],  # Z = 0 mm (bottom)
-        [0.075, 0.075, 0.001],  # Z = 1 mm
-        [0.075, 0.075, 0.002],  # Z = 2 mm
-        [0.075, 0.075, 0.003],  # Z = 3 mm
-        [0.075, 0.075, 0.004],  # Z = 4 mm
+        [_xc, _yc, _hz * d / 4.0] for d in range(5)
     ])
+
+    # Real frame times, used when a PVD timestep is unavailable. waam_data.csv is
+    # written by the solver with one row per saved frame (time_s,layer,...) and is
+    # the authoritative time axis. Previously the last-resort fallback was
+    # "i * 10.125", an invented spacing that silently produced a plausible but
+    # false cooling curve. We now read the real times, and only if even that is
+    # missing do we plot against frame index and say so on the axis label.
+    csv_times = _read_csv_frame_times(run_dir, len(vtu_files))
+    time_axis_is_index = False
 
     for i, f in enumerate(vtu_files):
         m = pv.read(f)
@@ -107,13 +263,15 @@ def generate_thermocouple_plot(run_dir: Path, out_path: Path) -> Path:
                     t_val = float(datasets[i].get("timestep", 0))
             except Exception:
                 pass
+        if t_val is None and "Time" in m.field_data:
+            t_val = float(m.field_data["Time"][0])
+        if t_val is None and csv_times is not None and i < len(csv_times):
+            t_val = csv_times[i]
         if t_val is None:
-            # Fallback: use VTU field data if available
-            if "Time" in m.field_data:
-                t_val = float(m.field_data["Time"][0])
-            else:
-                # Last fallback: estimate from CSV
-                t_val = i * 10.125
+            # No real time information anywhere: plot against frame index and
+            # label the axis honestly instead of inventing a time scale.
+            t_val = float(i)
+            time_axis_is_index = True
         time_series.append(t_val)
         probed = pv.PolyData(tc_points).sample(m)
         temps = probed["TempC"]
@@ -146,9 +304,19 @@ def generate_thermocouple_plot(run_dir: Path, out_path: Path) -> Path:
         ax_right.plot(time_series, tc_data[d], color=colors[d], linestyle=styles[d],
                       linewidth=2.2)
 
-    ax_left.set_xlim(0, 500)
-    ax_right.set_xlim(500, max(time_series))
-    ax_left.set_ylim(20, max(tc_data[4]) * 1.15)
+    # The broken axis assumes a real second-valued time axis with a 500 s split.
+    # Without real times the split is meaningless, so fall back to a single
+    # continuous axis rather than drawing a bogus 0-500 s / 500-end break.
+    if not time_axis_is_index and max(time_series) > 500.0:
+        ax_left.set_xlim(0, 500)
+        ax_right.set_xlim(500, max(time_series))
+    elif not time_axis_is_index:
+        ax_left.set_xlim(min(time_series), max(time_series))
+        ax_right.set_xlim(min(time_series), max(time_series))
+    else:
+        ax_left.set_xlim(0, max(1, max(time_series)))
+        ax_right.set_xlim(0, max(1, max(time_series)))
+    ax_left.set_ylim(20, max(max(tc_data[4]) * 1.15, 30.0))
 
     ax_left.spines['right'].set_visible(False)
     ax_right.spines['left'].set_visible(False)
@@ -173,10 +341,15 @@ def generate_thermocouple_plot(run_dir: Path, out_path: Path) -> Path:
     ax_left.spines['left'].set_color('#0f172a')
     ax_right.spines['right'].set_color('#0f172a')
 
-    ax_left.set_xlabel(r'Elapsed Time, $t\,\mathrm{[s]}$ (Magnified Initial Transient)',
-                       fontsize=12, fontweight='bold', color='#0f172a', labelpad=8)
-    ax_right.set_xlabel(r'Elapsed Time, $t\,\mathrm{[s]}$ (Extended Cooldown)',
-                        fontsize=12, fontweight='bold', color='#0f172a', labelpad=8)
+    if time_axis_is_index:
+        # Be explicit that the abscissa is a frame counter, not seconds.
+        x_left = r'Frame Index (no time data available in this run)'
+        x_right = r'Frame Index (no time data available in this run)'
+    else:
+        x_left = r'Elapsed Time, $t\,\mathrm{[s]}$ (Magnified Initial Transient)'
+        x_right = r'Elapsed Time, $t\,\mathrm{[s]}$ (Extended Cooldown)'
+    ax_left.set_xlabel(x_left, fontsize=12, fontweight='bold', color='#0f172a', labelpad=8)
+    ax_right.set_xlabel(x_right, fontsize=12, fontweight='bold', color='#0f172a', labelpad=8)
     ax_left.set_ylabel(r'Substrate Temperature, $T\,\mathrm{[^\circ C]}$',
                        fontsize=12, fontweight='bold', color='#0f172a', labelpad=10)
 
@@ -278,17 +451,43 @@ def render_toolpath_animation(run_dir: Path, outdir: Path, stl_path: Path):
     cam_pos = [(0.36, 0.36, 0.24), (0.075, 0.075, 0.045), (0.0, 0.0, 1.0)]
     cam_zoom = 0.90
 
+    # --- Real solver temperature frames (timestep, path) from waam.pvd ----------
+    # Previously the deposit's temperature was INVENTED analytically
+    # (75 + 950*z/zmax + 650*exp(-d^2)). Now we load the actual VTU frames the
+    # solver wrote and sample them onto the CAD surface. If no frames exist we
+    # render the deposit untinted rather than showing invented heat.
+    vis_dir = run_dir / "visual_outputs"
+    frame_table = []  # list of (timestep_s, vtu_path)
+    pvd = vis_dir / "waam.pvd"
+    if pvd.exists():
+        try:
+            pvd_text = pvd.read_text(errors="ignore")
+            for m_t, m_f in re.finditer(
+                    r"<DataSet timestep='([^']*)'\s+file='([^']*)'", pvd_text):
+                try:
+                    ts = float(m_t)
+                except ValueError:
+                    ts = float("nan")
+                fp = vis_dir / m_f
+                if fp.exists():
+                    frame_table.append((ts, fp))
+        except Exception:
+            frame_table = []
+    frame_table.sort(key=lambda r: (r[0] if r[0] == r[0] else 0.0))
+    if frame_table:
+        print(f"[ReportEngine] Animation sampling {len(frame_table)} real solver frames")
+
     # Read actual layer count from parameters
     params_file = run_dir / "parameters.json"
     n_layers_actual = 27
-    hz_base_actual = 15.0
+    hz_base_actual = 5.0
     h_bead_actual = 3.0
     if params_file.exists():
         try:
             with open(params_file) as f:
                 params = json.load(f)
             n_layers_actual = resolve_n_layers(run_dir, params)
-            hz_base_actual = float(params.get("hz_base", 0.015)) * 1000.0
+            hz_base_actual = float(params.get("hz_base", 0.005)) * 1000.0
             h_bead_actual = float(params.get("h_bead", 0.003)) * 1000.0
         except Exception:
             pass
@@ -308,10 +507,26 @@ def render_toolpath_animation(run_dir: Path, outdir: Path, stl_path: Path):
         if cur_z > 0.0155:
             dep = cad_placed.clip(normal=[0, 0, 1], origin=[0, 0, cur_z], invert=True)
             if dep.n_points > 0:
-                z_vals = dep.points[:, 2]
-                t_field = 75.0 + (z_vals - 0.015) / max(cur_z - 0.015, 1e-4) * 950.0
-                dist_torch = np.sqrt((dep.points[:, 0] - cur_x)**2 + (dep.points[:, 1] - cur_y)**2 + (dep.points[:, 2] - cur_z)**2)
-                t_field += 650.0 * np.exp(- (dist_torch / 0.008)**2)
+                # Sample the real solver field for the frame closest in time to
+                # this animation step. Falls back to ambient (not a guess) when
+                # no frame data is available.
+                t_field = np.full(dep.n_points, 25.0)
+                if frame_table:
+                    ts_list = np.array([r[0] for r in frame_table], dtype=float)
+                    ts_list = np.where(np.isnan(ts_list),
+                                       np.linspace(0.0, float(cur_t), len(ts_list)),
+                                       ts_list)
+                    j = int(np.argmin(np.abs(ts_list - cur_t)))
+                    try:
+                        src = pv.read(str(frame_table[j][1]))
+                        sampled = pv.PolyData(dep.points.copy()).sample(src)
+                        vals = np.asarray(sampled["TempC"]).ravel()
+                        # FreeFEM writes not-yet-activated nodes as -1.
+                        vals = np.where(np.isfinite(vals) & (vals > 0.0), vals, 25.0)
+                        if vals.size == dep.n_points:
+                            t_field = vals
+                    except Exception:
+                        t_field = np.full(dep.n_points, 25.0)
                 t_field = np.clip(t_field, 25.0, 1650.0)
                 dep["TempC"] = t_field
                 p.add_mesh(dep, scalars="TempC", cmap="turbo", clim=[25.0, 1650.0],
@@ -344,7 +559,8 @@ def generate_production_report(run_dir: str):
     """
     Main entry point for generating the production-grade 2-page LaTeX PDF report.
     """
-    run_dir = Path(run_dir).resolve()
+    from core.postprocess.output_manager import canonical_run_dir
+    run_dir = Path(canonical_run_dir(str(run_dir))).resolve()
     outdir = run_dir.parent if run_dir.name == "FreeFEM" else run_dir
     freefem_dir = outdir / "FreeFEM" if (outdir / "FreeFEM").exists() else run_dir
 
@@ -363,7 +579,13 @@ def generate_production_report(run_dir: str):
 
     # Generate thermocouple plot
     tc_plot = freefem_dir / "thermal_history_thermocouples_unlog.png"
-    generate_thermocouple_plot(freefem_dir, tc_plot)
+    try:
+        import json as _json
+        _ppath = run_dir / "parameters.json"
+        _p = _json.load(open(_ppath)) if _ppath.exists() else {}
+    except Exception:
+        _p = {}
+    generate_thermocouple_plot(freefem_dir, tc_plot, params=_p)
     _copy_if_distinct(tc_plot, outdir / "thermal_history_thermocouples_unlog.png")
 
     # Re-render 3D plots
@@ -508,7 +730,7 @@ def generate_production_report(run_dir: str):
             pass
 
     n_layers = resolve_n_layers(freefem_dir, params)
-    hz_base = float(params.get("hz_base", 0.015))
+    hz_base = float(params.get("hz_base", 0.005))
     h_bead = float(params.get("h_bead", 0.003))
     total_height = hz_base + n_layers * h_bead
 
@@ -545,7 +767,7 @@ def generate_production_report(run_dir: str):
 <style>
     @page {{
         size: A4 portrait;
-        margin: 0;
+        margin: 12mm 15mm;
     }}
     * {{
         box-sizing: border-box;
@@ -570,8 +792,9 @@ def generate_production_report(run_dir: str):
     .latex-page {{
         background: #ffffff;
         width: 794px;
-        height: 1123px;
-        padding: 45px 50px;
+        min-height: 1123px;
+        height: auto;
+        padding: 45px 50px 30px 50px;
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         position: relative;
         display: flex;
@@ -710,16 +933,77 @@ def generate_production_report(run_dir: str):
         border: 1px solid #e2e8f0;
     }}
     .footer-page {{
-        position: absolute;
-        bottom: 15px;
-        left: 50px;
-        right: 50px;
+        margin-top: auto;
         display: flex;
         justify-content: space-between;
         font-size: 10px;
         color: #94a3b8;
         border-top: 1px solid #e2e8f0;
-        padding-top: 6px;
+        padding-top: 8px;
+    }}
+    @media (max-width: 1650px) {{
+        .document-container {{
+            flex-direction: column;
+            align-items: center;
+        }}
+    }}
+    @media print {{
+        body {{
+            background-color: #ffffff !important;
+            padding: 0 !important;
+            color: #000000 !important;
+        }}
+        .document-container {{
+            display: block !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            margin: 0 !important;
+            gap: 0 !important;
+        }}
+        .latex-page {{
+            width: 100% !important;
+            min-height: auto !important;
+            height: auto !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            break-after: page !important;
+            page-break-after: always !important;
+            display: block !important;
+        }}
+        .latex-page:last-child {{
+            break-after: auto !important;
+            page-break-after: auto !important;
+        }}
+        .table-container {{
+            max-height: none !important;
+            overflow: visible !important;
+            border: 1px solid #cbd5e1 !important;
+        }}
+        table.data-table {{
+            page-break-inside: auto !important;
+            break-inside: auto !important;
+        }}
+        table.data-table tr {{
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }}
+        .image-frame, .caption, .metric-grid, .metric-card, .header-box, .paraview-command-bar {{
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }}
+        h1, h2 {{
+            break-after: avoid !important;
+            page-break-after: avoid !important;
+        }}
+        .copy-btn, .no-print {{
+            display: none !important;
+        }}
+        .footer-page {{
+            position: static !important;
+            margin-top: 20px !important;
+            border-top: 1px solid #cbd5e1 !important;
+        }}
     }}
 </style>
 </head>
@@ -865,14 +1149,16 @@ function copyCommand() {{
     with open(outdir / "report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    # Clean up obsolete / stray files
+    # Clean up obsolete / stray files.
+    # NOTE: the generated figures used to be DELETED here right after being
+    # embedded in the report -- the report kept its own copies, but the plots
+    # directory the user opened no longer had 02..05. Only genuinely obsolete
+    # names are removed now; anything this run produced is left alone.
     obsolete = [
         ".DS_Store", "sphere_mechanical_warpage.png", "sphere_tpeak_contours.png",
         "thermal_history_logscale.png", "sphere_layer_by_layer_build.gif",
         "sphere_tpeak_white.png", "sphere_warpage_white.png",
         "sphere_layer_by_layer_build_white.gif",
-        "02_cooling_rates_and_dt85.png", "03_distortion_and_warpage.png",
-        "04_residual_stress_mises.png", "05_heat_input_and_dwell_energy.png"
     ]
     for d in [outdir, freefem_dir]:
         for obs in obsolete:

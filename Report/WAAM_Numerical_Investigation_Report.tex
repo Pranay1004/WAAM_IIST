@@ -1,0 +1,517 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[top=2.0cm, bottom=2.0cm, left=2.0cm, right=2.0cm]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{mathptmx} % Clean Times Roman academic typography
+\usepackage{microtype}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=black]{hyperref}
+
+\setstretch{1.06}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{WAAM Numerical Investigation --- Governing Formulations \& Equations}}
+\fancyhead[R]{\small\textit{P. K. Pandey (SC25M147)}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\titleformat{\section}{\large\bfseries}{\thesection.\quad}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+\titlespacing*{\section}{0pt}{1.0em}{0.4em}
+\titlespacing*{\subsection}{0pt}{0.5em}{0.15em}
+
+% Balanced display math spacing for clean section page layouts
+\setlength{\abovedisplayskip}{5.5pt}
+\setlength{\belowdisplayskip}{5.5pt}
+\setlength{\abovedisplayshortskip}{3pt}
+\setlength{\belowdisplayshortskip}{3pt}
+
+\begin{document}
+
+\begin{center}
+    {\LARGE\bfseries Mathematical Formulations and Governing Equations for WAAM Numerical Investigation\par}
+    \vspace{0.35em}
+    {\large\textbf{Concise Formulation Compendium: Thermal, Mechanical, Source, and Discretization Models}\par}
+    \vspace{0.35em}
+    {\normalsize\textbf{Author:} Pranay K. Pandey (\texttt{SC25M147})\par}
+    {\small M.Tech in Manufacturing Technology, Department of Aerospace Engineering\par}
+    {\small Indian Institute of Space Science and Technology (IIST), Thiruvananthapuram\par}
+    \vspace{0.15em}
+    {\small\textbf{Thesis Supervisors:} Dr. Sooraj V. S. \& Dr. Chakravarthy P.\par}
+\end{center}
+
+\vspace{0.15em}
+\hrule
+\vspace{0.6em}
+
+\section{Thermal Energy Transport and Phase Change Formulations}
+
+\subsection*{Non-Linear Transient Heat Conduction Equation (Strong Form)}
+\[
+\rho(T)\,c_p(T)\,\frac{\partial T}{\partial t} = \nabla \cdot \bigl(k(T)\,\nabla T\bigr) + q_{\mathrm{source}}(\vec{x}, t) - \rho(T)\,L_f\,\frac{\partial f_l}{\partial t}
+\]
+
+\subsection*{Mushy Zone Liquid Fraction Linear Evolution}
+\[
+f_l(T) = \begin{cases}
+0, & T < T_{\mathrm{sol}} \\
+\displaystyle\frac{T - T_{\mathrm{sol}}}{T_{\mathrm{liq}} - T_{\mathrm{sol}}}, & T_{\mathrm{sol}} \le T \le T_{\mathrm{liq}} \\
+1, & T > T_{\mathrm{liq}}
+\end{cases}
+\]
+
+\subsection*{Apparent Heat Capacity Formulation}
+\[
+c_p^*(T) = c_p(T) + L_f\,\frac{\partial f_l}{\partial T} = \begin{cases}
+c_p(T), & T < T_{\mathrm{sol}} \text{ or } T > T_{\mathrm{liq}} \\[4pt]
+\displaystyle c_p(T) + \frac{L_f}{T_{\mathrm{liq}} - T_{\mathrm{sol}}}, & T_{\mathrm{sol}} \le T \le T_{\mathrm{liq}}
+\end{cases}
+\]
+
+\subsection*{Enthalpy Formulation with Apparent Heat Capacity}
+\[
+\rho(T)\,c_p^*(T)\,\frac{\partial T}{\partial t} = \nabla \cdot \bigl(k(T)\,\nabla T\bigr) + q_{\mathrm{source}}(\vec{x}, t)
+\]
+
+\subsection*{Finite Element Variational Weak Form (Backward Euler, $\theta = 1.0$)}
+\[
+\int_{\Omega} \left( \frac{\rho\,c_p^*}{\Delta t}\,T^{n+1}\,v + k(T)\,\nabla T^{n+1} \cdot \nabla v \right) d\Omega + \int_{\partial\Omega} h_{\mathrm{eff}}\,T^{n+1}\,v\,dA = \int_{\Omega} \left( \frac{\rho\,c_p^*}{\Delta t}\,T^n + q_{\mathrm{source}}^{n+1} \right) v\,d\Omega + \int_{\partial\Omega} h_{\mathrm{eff}}\,T_\infty\,v\,dA
+\]
+
+\subsection*{Linearized Stefan-Boltzmann Radiation Coefficient}
+\[
+h_{\mathrm{rad}}(T) = \varepsilon\,\sigma_{\mathrm{SB}}\,(T + T_\infty)\,(T^2 + T_\infty^2) \approx 4\,\varepsilon\,\sigma_{\mathrm{SB}}\,T_{\mathrm{ref}}^3
+\]
+
+\subsection*{Effective Combined Surface Convective-Radiative Heat Transfer Coefficient}
+\[
+h_{\mathrm{eff}} = h_{\mathrm{conv}} + h_{\mathrm{rad}}
+\]
+
+\subsection*{Boiling Temperature Surface Evaporation Cap}
+\[
+T(\vec{x}, t) = \min\bigl(T(\vec{x}, t),\,T_{\mathrm{boil}}\bigr) \qquad (T_{\mathrm{boil}} = 2862\,^\circ\mathrm{C})
+\]
+
+\subsection*{Latent Heat of Vaporization Dissipation Accounting}
+\[
+E_{\mathrm{cap}} = \int_{\Omega} \rho\,c_p^*\,\max(T - T_{\mathrm{boil}},\,0)\,d\Omega
+\]
+
+\clearpage
+\section{Moving Volumetric Heat Source Formulations (Goldak Double-Ellipsoid)}
+
+\subsection*{Lagrangian-to-Eulerian Torch Coordinate Transformation}
+\[
+\xi = (x - x_0) - v_{\mathrm{scan}}\,(t - t_{\mathrm{start}})
+\]
+
+\subsection*{Front Semi-Ellipsoid Heat Flux Density Distribution ($\xi \ge 0$)}
+\[
+q_f(\xi, y, z) = \frac{6\sqrt{3}\,f_f\,Q_{\mathrm{net}}}{\pi\sqrt{\pi}\,a_f\,b_G\,c_G}\,\exp\left( -3\,\frac{\xi^2}{a_f^2} - 3\,\frac{y^2}{b_G^2} - 3\,\frac{(z - z_0)^2}{c_G^2} \right)
+\]
+
+\subsection*{Rear Semi-Ellipsoid Heat Flux Density Distribution ($\xi < 0$)}
+\[
+q_r(\xi, y, z) = \frac{6\sqrt{3}\,f_r\,Q_{\mathrm{net}}}{\pi\sqrt{\pi}\,a_r\,b_G\,c_G}\,\exp\left( -3\,\frac{\xi^2}{a_r^2} - 3\,\frac{y^2}{b_G^2} - 3\,\frac{(z - z_0)^2}{c_G^2} \right)
+\]
+
+\subsection*{Heat Flux Spatial Continuity Constraint at Arc Center Plane ($\xi = 0$)}
+\[
+q_f(0, y, z) = q_r(0, y, z) \iff \frac{f_f}{a_f} = \frac{f_r}{a_r} \implies f_r = f_f\,\left(\frac{a_r}{a_f}\right)
+\]
+
+\subsection*{Total Power Energy Conservation Constraint}
+\[
+\int_{-\infty}^{0} \iint_{-\infty}^{\infty} q_r\,dy\,dz\,d\xi + \int_{0}^{\infty} \iint_{-\infty}^{\infty} q_f\,dy\,dz\,d\xi = Q_{\mathrm{net}} \iff f_f + f_r = 2.0
+\]
+
+\subsection*{Energy Partition Fractions Solution}
+\[
+f_f = \frac{2\,a_f}{a_f + a_r}, \qquad f_r = \frac{2\,a_r}{a_f + a_r}
+\]
+
+\subsection*{Net Absorbed Arc Thermal Power}
+\[
+Q_{\mathrm{net}} = \eta_{\mathrm{arc}}\,U\,I
+\]
+
+\subsection*{Transverse Semi-Axis Sizing from Bead Width}
+\[
+b_G = 0.50\,w_{\mathrm{bead}}
+\]
+
+\subsection*{Penetration Semi-Axis Sizing from Bead Height}
+\[
+c_G = 1.25\,h_{\mathrm{bead}}
+\]
+
+\subsection*{Longitudinal Front Semi-Axis Sizing}
+\[
+a_f = 0.50\,w_{\mathrm{bead}}
+\]
+
+\subsection*{Longitudinal Rear Semi-Axis Sizing}
+\[
+a_r = 1.25\,w_{\mathrm{bead}} = 2.50\,a_f
+\]
+
+\subsection*{Dimensionless Energy Fractions for 2.5x Rear Elongation}
+\[
+f_f = \frac{2(0.50\,w_{\mathrm{bead}})}{0.50\,w_{\mathrm{bead}} + 1.25\,w_{\mathrm{bead}}} = \frac{1.00}{1.75} \approx 0.60, \qquad f_r = \frac{2(1.25\,w_{\mathrm{bead}})}{0.50\,w_{\mathrm{bead}} + 1.25\,w_{\mathrm{bead}}} = \frac{2.50}{1.75} \approx 1.40
+\]
+
+\subsection*{Peak Volumetric Power Density at Torch Axis $(\xi=0, y=0, z=z_0)$}
+\[
+q_0 = \frac{6\sqrt{3}\,f_f\,Q_{\mathrm{net}}}{\pi\sqrt{\pi}\,a_f\,b_G\,c_G} = \frac{6\sqrt{3}\,f_r\,Q_{\mathrm{net}}}{\pi\sqrt{\pi}\,a_r\,b_G\,c_G}
+\]
+
+\clearpage
+\section{Quiet Element Activation and Inactive State Suppression}
+
+\subsection*{Element Activation State Heaviside Function}
+\[
+\psi(\vec{x}, t) = \begin{cases}
+1, & \vec{x} \in \Omega_{\mathrm{activated}}(t) \\
+0, & \vec{x} \in \Omega_{\mathrm{quiet}}(t)
+\end{cases}
+\]
+
+\subsection*{Progressive Kinematic Torch Activation Condition}
+\[
+\psi_e(t) = 1 \quad \iff \quad x_{\mathrm{torch}}(t) \ge x_e \quad \text{and} \quad z_{\mathrm{torch}}(t) \ge z_e
+\]
+
+\subsection*{Quiet Element Thermal Conductivity Degradation}
+\[
+k_{\mathrm{eff}}(\vec{x}, T) = \psi(\vec{x}, t)\,k(T) + \bigl(1 - \psi(\vec{x}, t)\bigr)\cdot 10^{-4}\,k(T)
+\]
+
+\subsection*{Volumetric Heat Capacity Conservation in Quiet Elements}
+\[
+(\rho\,c_p^*)_{\mathrm{eff}}(\vec{x}, T) = \rho(T)\,c_p^*(T)
+\]
+
+\subsection*{Quiet Element Mechanical Stiffness Degradation}
+\[
+E_{\mathrm{eff}}(\vec{x}, T) = \psi(\vec{x}, t)\,E(T) + \bigl(1 - \psi(\vec{x}, t)\bigr)\cdot 10^{-4}\,E(T)
+\]
+
+\subsection*{Quiet Element Yield Stress Suppression}
+\[
+\sigma_{y,\mathrm{eff}}(\vec{x}, T) = \psi(\vec{x}, t)\,\sigma_y(T) + \bigl(1 - \psi(\vec{x}, t)\bigr)\cdot 10^{-3}\,\sigma_y(T)
+\]
+
+\clearpage
+\section{Thermal Boundary Energy Balance Equations}
+
+\subsection*{Top Active Surface Energy Balance (Influx, Convection, and Radiation)}
+\[
+-k(T)\,\nabla T \cdot \vec{n} = q_{\mathrm{source}}(\xi, y, z) - h_{\mathrm{conv}}\,(T - T_\infty) - \varepsilon\,\sigma_{\mathrm{SB}}\,(T^4 - T_\infty^4)
+\]
+
+\subsection*{Lateral Wall Faces Convective and Radiative Dissipation (Robin BC)}
+\[
+-k(T)\,\frac{\partial T}{\partial n} = h_{\mathrm{conv}}\,(T - T_\infty) + \varepsilon\,\sigma_{\mathrm{SB}}\,(T^4 - T_\infty^4)
+\]
+
+\subsection*{Multi-Bead Overlapping Lateral Solid Conduction Continuity}
+\[
+-k_1\,\nabla T_1 \cdot \vec{n}_1 = -k_2\,\nabla T_2 \cdot \vec{n}_2, \qquad T_1 = T_2
+\]
+
+\subsection*{Lateral Chill Block / Copper Shoe Contact Heat Flux}
+\[
+-k(T)\,\nabla T \cdot \vec{n} = h_{\mathrm{chill}}\,(T - T_{\mathrm{chill}})
+\]
+
+\subsection*{Substrate Bottom Contact Heat Conduction with Fixture Table}
+\[
+-k(T)\,\nabla T \cdot \vec{n} = h_{\mathrm{contact}}\,(T - T_{\mathrm{table}})
+\]
+
+\subsection*{Initial Domain Temperature Field}
+\[
+T(\vec{x}, 0) = T_{\mathrm{amb}} = 25\,^\circ\mathrm{C}
+\]
+
+\clearpage
+\section{Feedstock Kinematics, Mass Conservation, and Bead Dimensions}
+
+\subsection*{Volumetric Wire Feed Delivery Rate}
+\[
+Q_{\mathrm{wire}} = \left(\frac{\pi\,d_{\mathrm{wire}}^2}{4}\right)\,v_{\mathrm{wire}}
+\]
+
+\subsection*{Theoretical Bead Cross-Sectional Area (Volume Conservation)}
+\[
+A_{\mathrm{bead}} = \frac{Q_{\mathrm{wire}}}{v_{\mathrm{scan}}} = \frac{\pi\,d_{\mathrm{wire}}^2\,v_{\mathrm{wire}}}{4\,v_{\mathrm{scan}}}
+\]
+
+\subsection*{Parabolic Bead Profile Area Relation}
+\[
+A_{\mathrm{bead}} = \frac{2}{3}\,w_{\mathrm{bead}}\,h_{\mathrm{bead}}
+\]
+
+\subsection*{Parabolic Bead Reinforcement Height}
+\[
+h_{\mathrm{bead}} = \frac{3\,A_{\mathrm{bead}}}{2\,w_{\mathrm{bead}}} = \frac{3\,\pi\,d_{\mathrm{wire}}^2\,v_{\mathrm{wire}}}{8\,w_{\mathrm{bead}}\,v_{\mathrm{scan}}}
+\]
+
+\subsection*{Semi-Elliptical Bead Reinforcement Height}
+\[
+h_{\mathrm{bead}} = \frac{4\,A_{\mathrm{bead}}}{\pi\,w_{\mathrm{bead}}} = \frac{d_{\mathrm{wire}}^2\,v_{\mathrm{wire}}}{w_{\mathrm{bead}}\,v_{\mathrm{scan}}}
+\]
+
+\subsection*{Subsequent Pass Layer Step Height (Remelting Overlap)}
+\[
+h_{\mathrm{subseq}} = \eta_{\mathrm{remelt}}\,h_{\mathrm{bead}} \qquad (\eta_{\mathrm{remelt}} \approx 0.80)
+\]
+
+\subsection*{Total Multi-Layer Wall Height Accumulation}
+\[
+H_{\mathrm{total}} = h_{\mathrm{bead\_first}} + (N_{\mathrm{layers}} - 1)\,h_{\mathrm{subseq}}
+\]
+
+\clearpage
+\section{Linear Heat Input and Analytic Cooling Times}
+
+\subsection*{Net Linear Heat Input per Unit Travel}
+\[
+H_{\mathrm{net}} = \frac{Q_{\mathrm{net}}}{v_{\mathrm{scan}}} = \frac{\eta_{\mathrm{arc}}\,U\,I}{v_{\mathrm{scan}}}
+\]
+
+\subsection*{2D Thin-Plate Cooling Time ($\Delta t_{8/5}^{(2\mathrm{D})}$)}
+\[
+\Delta t_{8/5}^{(2\mathrm{D})} = \frac{(H_{\mathrm{net}})^2}{4\,\pi\,k\,\rho\,c_p\,w_{\mathrm{bead}}^2}\left[\left(\frac{1}{500 - T_0}\right)^2 - \left(\frac{1}{800 - T_0}\right)^2\right]
+\]
+
+\subsection*{3D Thick-Plate Cooling Time ($\Delta t_{8/5}^{(3\mathrm{D})}$)}
+\[
+\Delta t_{8/5}^{(3\mathrm{D})} = \frac{H_{\mathrm{net}}}{2\,\pi\,k}\left[\frac{1}{500 - T_0} - \frac{1}{800 - T_0}\right]
+\]
+
+\subsection*{Relative Plate Thickness Dimensional Transition Parameter}
+\[
+\theta_t = w_{\mathrm{bead}}\,\sqrt{\frac{\rho\,c_p\,(500 - T_0)}{H_{\mathrm{net}}}}
+\]
+
+\clearpage
+\section{Solidification Dynamics and Microstructure Metrics}
+
+\subsection*{Thermal Gradient Vector and Magnitude at Solidus Front}
+\[
+\vec{G} = \nabla T, \qquad G = \|\nabla T\| = \sqrt{\left(\frac{\partial T}{\partial x}\right)^2 + \left(\frac{\partial T}{\partial y}\right)^2 + \left(\frac{\partial T}{\partial z}\right)^2}
+\]
+
+\subsection*{Solidification Front Normal Growth Velocity}
+\[
+R = v_{\mathrm{scan}}\,\cos\theta = v_{\mathrm{scan}}\,\left(\frac{-\partial T / \partial x}{\|\nabla T\|}\right)
+\]
+
+\subsection*{Solidification Cooling Rate}
+\[
+\dot{T} = \left|\frac{\partial T}{\partial t}\right| = G \cdot R = -v_{\mathrm{scan}}\,\frac{\partial T}{\partial x}
+\]
+
+\subsection*{Solidification Morphology Ratio}
+\[
+\frac{G}{R} = \frac{\|\nabla T\|^2}{-v_{\mathrm{scan}}\,(\partial T / \partial x)}
+\]
+
+\subsection*{Secondary Dendrite Arm Spacing (SDAS, $\lambda_2$)}
+\[
+\lambda_2 = K\,\bigl(\dot{T}\bigr)^{-n}
+\]
+
+\subsection*{Columnar-to-Equiaxed Transition (Hunt CET Criterion)}
+\[
+\Phi_{\mathrm{eq}} = \exp\left(-\frac{4\pi}{3}\,N_0\,\left[\frac{G}{\Delta T_{\mathrm{crit}}}\right]^{-3}\right)
+\]
+
+\clearpage
+\section{Quasi-Static Mechanics and Continuum Kinematics}
+
+\subsection*{Quasi-Static Momentum Balance Equation (Strong Form)}
+\[
+\nabla \cdot \boldsymbol{\sigma} + \vec{b} = \vec{0} \qquad (\vec{b} \approx \vec{0})
+\]
+
+\subsection*{Weak Variational Form of Momentum Balance}
+\[
+\int_{\Omega} \boldsymbol{\sigma} : \nabla\vec{w}\,d\Omega = \int_{\partial\Omega} \vec{t} \cdot \vec{w}\,dA + \int_{\Omega} \vec{b} \cdot \vec{w}\,d\Omega \quad \forall\,\vec{w} \in \mathcal{V}_0
+\]
+
+\subsection*{Infinitesimal Strain-Displacement Relation}
+\[
+\boldsymbol{\varepsilon} = \frac{1}{2}\bigl(\nabla \vec{u} + (\nabla \vec{u})^T\bigr), \qquad \varepsilon_{ij} = \frac{1}{2}\left(\frac{\partial u_i}{\partial x_j} + \frac{\partial u_j}{\partial x_i}\right)
+\]
+
+\subsection*{Additive Strain Tensor Decomposition}
+\[
+\boldsymbol{\varepsilon} = \boldsymbol{\varepsilon}^e + \boldsymbol{\varepsilon}^p + \boldsymbol{\varepsilon}^{\mathrm{th}}
+\]
+
+\subsection*{Isotropic Thermal Expansion Strain Tensor}
+\[
+\boldsymbol{\varepsilon}^{\mathrm{th}} = \alpha_{\mathrm{sec}}(T)\,(T - T_{\mathrm{ref}})\,\mathbf{I}
+\]
+
+\subsection*{Secant Thermal Expansion Coefficient Definition}
+\[
+\alpha_{\mathrm{sec}}(T) = \frac{1}{T - T_{\mathrm{ref}}}\int_{T_{\mathrm{ref}}}^{T} \alpha_{\mathrm{inst}}(T')\,dT'
+\]
+
+\clearpage
+\section{Constitutive Elastoplasticity and Radial Return Mapping (\texorpdfstring{$J_2$}{J2} Flow)}
+
+\subsection*{Generalized Hooke's Law for Isotropic Elasticity}
+\[
+\boldsymbol{\sigma} = \mathbf{C}(T) : \boldsymbol{\varepsilon}^e = 2\,G(T)\,\mathbf{e}^e + K(T)\,\operatorname{tr}(\boldsymbol{\varepsilon}^e)\,\mathbf{I}
+\]
+
+\subsection*{Elastic Shear and Bulk Moduli}
+\[
+G(T) = \frac{E(T)}{2(1 + \nu)}, \qquad K(T) = \frac{E(T)}{3(1 - 2\nu)}
+\]
+
+\subsection*{Deviatoric Cauchy Stress Tensor}
+\[
+\mathbf{s} = \boldsymbol{\sigma} - \frac{1}{3}\operatorname{tr}(\boldsymbol{\sigma})\,\mathbf{I}
+\]
+
+\subsection*{Second Invariant of Deviatoric Stress ($J_2$)}
+\[
+J_2 = \frac{1}{2}\,\mathbf{s} : \mathbf{s} = \frac{1}{2}\,s_{ij}\,s_{ij}
+\]
+
+\subsection*{Von Mises Equivalent Stress}
+\[
+\sigma_{\mathrm{eq}} = \sqrt{3\,J_2} = \sqrt{\frac{3}{2}\,\mathbf{s} : \mathbf{s}} = \sqrt{\frac{3}{2}\,s_{ij}\,s_{ij}}
+\]
+
+\subsection*{Von Mises Yield Function with Linear Isotropic Hardening}
+\[
+f(\boldsymbol{\sigma}, p) = \sigma_{\mathrm{eq}} - \sigma_y(T, p) \le 0
+\]
+
+\subsection*{Current Yield Strength Evolution}
+\[
+\sigma_y(T, p) = \sigma_{y0}(T) + H'(T)\,p
+\]
+
+\subsection*{Prandtl-Reuss Associative Plastic Flow Rule}
+\[
+\dot{\boldsymbol{\varepsilon}}^p = \dot{\gamma}\,\frac{\partial f}{\partial \boldsymbol{\sigma}} = \dot{\gamma}\,\sqrt{\frac{3}{2}}\,\frac{\mathbf{s}}{\|\mathbf{s}\|} = \frac{3}{2}\,\dot{p}\,\frac{\mathbf{s}}{\sigma_{\mathrm{eq}}}
+\]
+
+\subsection*{Accumulated Equivalent Plastic Strain Rate}
+\[
+\dot{p} = \sqrt{\frac{2}{3}\,\dot{\boldsymbol{\varepsilon}}^p : \dot{\boldsymbol{\varepsilon}}^p}
+\]
+
+\clearpage
+\noindent{\large\bfseries 9. Constitutive Elastoplasticity and Radial Return Mapping (Continued)\par}
+\vspace{0.2em}
+\hrule
+\vspace{0.6em}
+
+\subsection*{Trial Elastic Strain Tensor Increment (Step $n+1$)}
+\[
+\boldsymbol{\varepsilon}^{e,\mathrm{trial}}_{n+1} = \boldsymbol{\varepsilon}_{n+1} - \boldsymbol{\varepsilon}^p_n - \boldsymbol{\varepsilon}^{\mathrm{th}}_{n+1}
+\]
+
+\subsection*{Trial Cauchy and Deviatoric Stress Tensors}
+\[
+\boldsymbol{\sigma}^{\mathrm{trial}} = \mathbf{C}(T_{n+1}) : \boldsymbol{\varepsilon}^{e,\mathrm{trial}}_{n+1}, \qquad \mathbf{s}^{\mathrm{trial}} = \boldsymbol{\sigma}^{\mathrm{trial}} - \frac{1}{3}\operatorname{tr}(\boldsymbol{\sigma}^{\mathrm{trial}})\,\mathbf{I}
+\]
+
+\subsection*{Trial Von Mises Equivalent Stress}
+\[
+\sigma_{\mathrm{eq}}^{\mathrm{trial}} = \sqrt{\frac{3}{2}\,\mathbf{s}^{\mathrm{trial}} : \mathbf{s}^{\mathrm{trial}}}
+\]
+
+\subsection*{Trial Yield Function Evaluation}
+\[
+f^{\mathrm{trial}} = \sigma_{\mathrm{eq}}^{\mathrm{trial}} - \sigma_y(T_{n+1}, p_n)
+\]
+
+\subsection*{Plastic Multiplier Increment ($\Delta p$)}
+\[
+\Delta p = \begin{cases}
+0, & \text{if } f^{\mathrm{trial}} \le 0 \quad (\text{Elastic Step}) \\[6pt]
+\displaystyle\frac{\sigma_{\mathrm{eq}}^{\mathrm{trial}} - \sigma_y(T_{n+1}, p_n)}{3\,G(T_{n+1}) + H'(T_{n+1})}, & \text{if } f^{\mathrm{trial}} > 0 \quad (\text{Plastic Step})
+\end{cases}
+\]
+
+\subsection*{Deviatoric Stress Radial Return Projection}
+\[
+\mathbf{s}_{n+1} = \left( 1 - \frac{3\,G(T_{n+1})\,\Delta p}{\sigma_{\mathrm{eq}}^{\mathrm{trial}}} \right)\mathbf{s}^{\mathrm{trial}}
+\]
+
+\subsection*{Updated Cauchy Stress Tensor}
+\[
+\boldsymbol{\sigma}_{n+1} = \mathbf{s}_{n+1} + \frac{1}{3}\operatorname{tr}(\boldsymbol{\sigma}^{\mathrm{trial}})\,\mathbf{I}
+\]
+
+\subsection*{Updated Plastic Strain Tensor and Accumulated Plastic Strain}
+\[
+\boldsymbol{\varepsilon}^p_{n+1} = \boldsymbol{\varepsilon}^p_n + \frac{3}{2}\,\Delta p\,\frac{\mathbf{s}^{\mathrm{trial}}}{\sigma_{\mathrm{eq}}^{\mathrm{trial}}}, \qquad p_{n+1} = p_n + \Delta p
+\]
+
+\subsection*{Thermal Plastic Strain Annealing Reset (Liquid Fusion)}
+\[
+\text{If } T \ge T_{\mathrm{sol}} \implies \boldsymbol{\sigma} \to \mathbf{0}, \quad \boldsymbol{\varepsilon}^p \to \mathbf{0}, \quad p \to 0
+\]
+
+\clearpage
+\section{Mechanical Boundary Constraints}
+
+\subsection*{Rigid Baseplate Clamping Constraint (Dirichlet BC)}
+\[
+\vec{u}(\vec{x}) = \vec{0} \iff u_x = 0, \quad u_y = 0, \quad u_z = 0 \qquad \text{on } \Gamma_{\mathrm{clamp}}
+\]
+
+\subsection*{Isostatic (3-2-1) Minimal Kinematic Support Constraint}
+\[
+\vec{u}(0,0,0) = \vec{0}, \qquad u_y(L_x,0,0) = u_z(L_x,0,0) = 0, \qquad u_z(0,L_y,0) = 0
+\]
+
+\subsection*{Unilateral Baseplate Contact Support (Signorini Condition)}
+\[
+u_z \ge 0, \qquad \sigma_{zz} \ge 0, \qquad u_z \cdot \sigma_{zz} = 0 \qquad \text{at } z = 0
+\]
+
+\subsection*{Free Surface Traction-Free Condition (Neumann BC)}
+\[
+\boldsymbol{\sigma} \cdot \vec{n} = \vec{0} \qquad \text{on } \Gamma_{\mathrm{free}}
+\]
+
+\clearpage
+\section{Finite Element Discretization and Numerical Stability Criteria}
+
+\subsection*{Vertical Deposit Element Sizing ($\Delta z_{\mathrm{dep}}$)}
+\[
+\Delta z_{\mathrm{dep}} = 0.50\,h_{\mathrm{bead}} \implies n_{z,\mathrm{dep}} = 2 \times N_{\mathrm{layers}}
+\]
+
+\subsection*{Transverse Deposit Element Sizing ($\Delta y_{\mathrm{dep}}$)}
+\[
+\Delta y_{\mathrm{dep}} \approx 0.33\,w_{\mathrm{bead}} \implies n_{y,\mathrm{dep}} = 3
+\]
+
+\subsection*{Longitudinal Deposit Element Sizing ($\Delta x_{\mathrm{dep}}$)}
+\[
+\Delta x_{\mathrm{dep}} = \frac{L_x}{n_{x,\mathrm{dep}}} = \frac{150\,\mathrm{mm}}{30} = 5.0\,\mathrm{mm}
+\]
+
+\subsection*{Thermal Courant-Friedrichs-Lewy (CFL) Advection Alignment}
+\[
+\mathrm{CFL}_{\mathrm{thermal}} = \frac{v_{\mathrm{scan}}\,\Delta t_{\mathrm{weld}}}{\Delta x_{\mathrm{dep}}} \approx \frac{(5.0\,\mathrm{mm/s})\,(1.0\,\mathrm{s})}{5.0\,\mathrm{mm}} = 1.0
+\]
+
+\end{document}

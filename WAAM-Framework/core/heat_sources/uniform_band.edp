@@ -1,4 +1,13 @@
 // ============================================================
+// STATUS: STANDALONE REFERENCE MODULE -- NOT WIRED INTO THE PIPELINE.
+// Nothing in run.py / gui / codegen reads or executes this file, and it has
+// never been executed end-to-end by this repository, so it carries NO
+// validation. The normalisation comments below are analytical (checked by
+// hand / by tests/physics_suite.py where noted), but the assembled module has
+// no run behind it. Wire it into a build-matrix case before quoting numbers.
+// ============================================================
+
+// ============================================================
 // HEAT SOURCE: UNIFORM BAND
 // Constant flux over a rectangular moving patch.
 // Simplest model — useful for wide-bead deposition, brazing,

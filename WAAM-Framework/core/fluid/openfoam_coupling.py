@@ -15,7 +15,7 @@ case directories (system/, constant/, initial/) with:
 Parameter mapping:
   GUI I_weld * U_weld * eta_arc  ->  MELTING/HS_Q  [W]
   GUI v_scan                     ->  MELTING/HS_velocity  [m/s] (beam travels +Z)
-  GUI bG / 2                     ->  MELTING/HS_a  [m] (port convention, see note 4)
+  GUI bG                         ->  MELTING/HS_a  [m] (= bG*sqrt(2/3), see note 4)
   gas_gap (CFD gas layer)        ->  MELTING/focY  [m] (metal surface plane)
 
 PHYSICS-CORRECTNESS NOTES (verified against
@@ -388,9 +388,8 @@ def derive_cfd_window(params: Dict[str, Any], cfd_params: Dict[str, Any]) -> Dic
         except (TypeError, ValueError):
             return fb
 
-    ty_dep = float(params.get("ty_dep", 0.008) or 0.008)
-    if ty_dep > 1.0:  # tolerate mm input
-        ty_dep /= 1000.0
+    from mesh.units import dim_to_m
+    ty_dep = dim_to_m(params.get("ty_dep", 0.008) or 0.008, "ty_dep")
 
     # Explicit GUI overrides win when positive numbers.
     travel = _num(cfd_params, "travel_length_mm", -1.0)
@@ -503,17 +502,41 @@ def setup_beamweldfoam_case(
     metal_name = str(params.get("material_dep", params.get("material", "ER70S-6")))
     notes: List[str] = []
 
+    # --- Calibration parameter: atmosphere density -------------------------
+    # Physical air is 1.2 kg/m3, but beamWeldFoam VOF at a 7850:1.2 density
+    # ratio is unstable, so the generator has always written 0.1 (inertialess
+    # gas, thermal Marangoni coupling preserved). That fudge used to be
+    # invisible: it is now an explicit, recorded parameter (override with
+    # cfd_params["air_rho"] or params["air_rho"]).
+    air = dict(AIR_PROPERTIES)
+    try:
+        air["rho"] = float(cfd_params.get(
+            "air_rho", params.get("air_rho", AIR_PROPERTIES["rho"])))
+    except (TypeError, ValueError):
+        air["rho"] = float(AIR_PROPERTIES["rho"])
+    if abs(air["rho"] - 1.2) > 1e-12:
+        notes.append(
+            f"CALIBRATION air_rho={air['rho']:g} kg/m3 (physical air is 1.2): "
+            f"stabilisation fudge, gas treated as inertialess. Set air_rho=1.2 "
+            f"only with a matching stability study.")
+
     def _pm(key: str, default: float) -> float:
-        """Positive-float param fetch with mm tolerance (values >1.0 are mm)."""
+        """Positive-float param fetch with unit tolerance.
+
+        Unit guessing is centralised in mesh/units.py (per-quantity plausibility
+        thresholds). The previous inline rule (`> 1.0 means mm` for a fixed key
+        list) disagreed with the mesher's rule (`< 1.0 means metres`) on every
+        value near 1.0, and used a 1.0 m bound for quantities like lx whose
+        real bound is 5.0 m.
+        """
+        from mesh.units import dim_to_m
         try:
-            v = float(params.get(key, default))
-        except (TypeError, ValueError):
+            raw = params.get(key, default)
+            v = dim_to_m(raw, key, warn=notes.append)
+        except ValueError:
             v = float(default)
         if not (v > 0):
             v = float(default)
-        if v > 1.0 and key in ("hz_base", "ty_dep", "h_bead", "bG",
-                               "lx", "ly_base"):
-            v /= 1000.0
         return v
 
     # --- Local CFD window (meters). Frame: X transverse, Y vertical with
@@ -527,9 +550,12 @@ def setup_beamweldfoam_case(
         f"travel(Z)={travel_m*1000.0:.0f}mm transverse(X)={width_m*1000.0:.0f}mm"
     )
 
-    gas_gap_m = _num(cfd_params, "atmosphere_height", 0.003)
-    if gas_gap_m > 1.0:  # tolerate mm input
-        gas_gap_m /= 1000.0
+    from mesh.units import dim_to_m
+    try:
+        gas_gap_m = dim_to_m(_num(cfd_params, "atmosphere_height", 0.003),
+                             "gas_gap", warn=notes.append)
+    except ValueError:
+        gas_gap_m = 0.003
     gas_gap_m = min(max(gas_gap_m, 0.001), 0.020)
     y_top_m = gas_gap_m + hz_base_m  # metal surface (deposition plane) at gas_gap
 
@@ -541,9 +567,9 @@ def setup_beamweldfoam_case(
     except (TypeError, ValueError):
         eta_arc = 0.8
     eta_arc = min(max(eta_arc, 0.05), 1.0)
+    # Scan speed may arrive as mm/s or m/s; the shared rule converts values
+    # above 1.0 (m/s). The old code converted twice for the same input.
     v_scan = _pm("v_scan", 10.0e-3)
-    if v_scan > 1.0:  # tolerate mm/s input
-        v_scan /= 1000.0
     Q_arc = I_weld * U_weld * eta_arc         # [W]
     try:
         T_amb_K = float(params.get("T_amb", 25.0)) + 273.15
@@ -551,9 +577,10 @@ def setup_beamweldfoam_case(
         T_amb_K = 298.15
 
     # --- MELTING dict parameters ---
-    # Beam radius follows the port convention HS_a = bG/2 (see note 4).
+    # Match the Gaussian to the Goldak spot: exp(-2r^2/a^2) has the same
+    # footprint as exp(-3r^2/b^2) when a = b*sqrt(2/3) (see note 4).
     bG_m = _pm("bG", 7.0e-3)
-    HS_a = bG_m / 2.0
+    HS_a = bG_m * math.sqrt(2.0 / 3.0)
     HS_velocity = v_scan
     HS_Q = Q_arc
     HS_bg = 0.0
@@ -660,7 +687,7 @@ def setup_beamweldfoam_case(
     _write_set_fields_dict(dir_system, width_m, gas_gap_m, y_top_m, travel_m,
                            metal_name)
 
-    _write_transport_properties(dir_constant, metal, metal_name)
+    _write_transport_properties(dir_constant, metal, metal_name, air)
 
     _write_dynamic_mesh_dict(dir_constant)
 
@@ -696,6 +723,9 @@ def setup_beamweldfoam_case(
                      "y_total": round(float(y_top_m), 6),
                      "z_travel": round(float(travel_m), 6)},
         "gas_gap_m": round(float(gas_gap_m), 6),
+        "air_rho_kg_m3": float(air["rho"]),
+        "deposition_cutoff": float(HS_deposition_cutoff),
+        "Y_R": float(Y_R),
         "substrate_m": round(float(hz_base_m), 6),
         "focY_m": round(float(focY), 6),
         "Q_ramp_rate_W_per_s": round(float(Q_ramp_rate), 6),
@@ -912,14 +942,14 @@ divSchemes
     div(phirb,alpha) Gauss linear;
     div(((rho*nuEff)*dev2(T(grad(U))))) Gauss linear;
 
-    div(phi*cp,Temperature)   Gauss linearUpwind grad(Temperature);
-
     div(rhoPhi,epsilon1)   Gauss linear;
 
-    div((interpolate(cp)*rhoPhi),Temperature)   Gauss upwind;
-
-    div(rhoPhi,Temperature)    Gauss upwind;
-    div(phi,Temperature)   Gauss upwind;
+    // A SINGLE Temperature divergence term. This file previously declared
+    // FOUR of them (div(phi*cp,T), div((interpolate(cp)*rhoPhi),T),
+    // div(rhoPhi,T) and div(phi,T)); fvSchemes is a dictionary, so only the
+    // LAST entry is used and the rest are silently discarded -- whichever one
+    // was written last was the discretisation actually in force.
+    div((interpolate(cp)*rhoPhi),Temperature)   Gauss linearUpwind grad(Temperature);
 
     div(phi,epsilon1) Gauss linear;
 
@@ -1082,7 +1112,7 @@ MELTING
     epsilonRelaxation {epsRel};
 
     // Diverging-Gaussian beam (auto-generated from WAAM-Framework GUI):
-    // HS_a        = beam 1/e^2 radius at focus [m] (= Goldak bG/2, port convention)
+    // HS_a        = beam 1/e^2 radius at focus [m] (= Goldak bG*sqrt(2/3), see note 4)
     // HS_bg       = lateral beam offset in X [m] (0 = centred on joint line)
     // HS_velocity = beam travel speed along +Z [m/s] (NOT X: Z is travel here)
     // HS_lg       = beam lead offset along Z [m] (0 = starts at domain centre)
@@ -1170,12 +1200,17 @@ regions
 
 
 def _write_transport_properties(d: Path, metal: Dict[str, Any],
-                                metal_name: str = "ER70S-6"):
+                                metal_name: str = "ER70S-6",
+                                air: Dict[str, Any] = None):
     """Write constant/transportProperties with two-phase metal+air properties.
 
     Phase legend: phase1 = {name} (METAL), phase2 = air (atmosphere gas).
     The names phase1/phase2 are fixed by the solver; their meaning is fixed here.
+    `air` defaults to AIR_PROPERTIES; the caller may override rho (see the
+    air_rho calibration note in setup_beamweldfoam_case).
     """
+    if air is None:
+        air = AIR_PROPERTIES
     with open(d / "transportProperties", "w") as f:
         f.write(_header("dictionary", "transportProperties", "constant"))
         f.write(f"""
@@ -1203,16 +1238,16 @@ phase1
 phase2
 {{
     transportModel  Newtonian;
-    nu              {AIR_PROPERTIES['nu_liquid']:.6g};       // Kinematic viscosity [m2/s]
-    rho             {AIR_PROPERTIES['rho']};            // Density [kg/m3]
-    cp              {AIR_PROPERTIES['cp_liquid']};            // Specific heat [J/(kg.K)]
-    cpsolid         {AIR_PROPERTIES['cp_solid']};            // Solid specific heat [J/(kg.K)]
-    kappa           {AIR_PROPERTIES['kappa_liquid']};          // Thermal conductivity [W/(m.K)]
-    kappasolid      {AIR_PROPERTIES['kappa_solid']};          // Solid thermal conductivity [W/(m.K)]
-    Tsolidus        {AIR_PROPERTIES['T_solidus']};            // Solidus temperature [K]
-    Tliquidus       {AIR_PROPERTIES['T_liquidus']};           // Liquidus temperature [K]
-    LatentHeat      {AIR_PROPERTIES['latent_heat']};              // Latent heat [J/kg]
-    beta            {AIR_PROPERTIES['beta']:.6g};         // Thermal expansion coefficient [1/K]
+    nu              {air['nu_liquid']:.6g};       // Kinematic viscosity [m2/s]
+    rho             {air['rho']};            // Density [kg/m3]
+    cp              {air['cp_liquid']};            // Specific heat [J/(kg.K)]
+    cpsolid         {air['cp_solid']};            // Solid specific heat [J/(kg.K)]
+    kappa           {air['kappa_liquid']};          // Thermal conductivity [W/(m.K)]
+    kappasolid      {air['kappa_solid']};          // Solid thermal conductivity [W/(m.K)]
+    Tsolidus        {air['T_solidus']};            // Solidus temperature [K]
+    Tliquidus       {air['T_liquidus']};           // Liquidus temperature [K]
+    LatentHeat      {air['latent_heat']};              // Latent heat [J/kg]
+    beta            {air['beta']:.6g};         // Thermal expansion coefficient [1/K]
 }}
 
 // Surface tension properties (drive Marangoni flow along the pool surface):
@@ -1424,7 +1459,11 @@ def _write_initial_p_rgh(d: Path):
     with open(d / "p_rgh", "w") as f:
         f.write(_header("volScalarField", "p_rgh"))
         f.write("""
-dimensions      [1 -1 -2 0 0 0 0];
+// p_rgh is the KINEMATIC pressure (p - rho*g*h)/rho, so its dimensions are
+// m^2/s^2. This header used to declare Pa ([1 -1 -2]) while the comment above
+// it (and beamWeldFoam itself) use m^2/s^2: a kinematic field carrying
+// pressure dimensions makes the buoyancy term dimensionally inconsistent.
+dimensions      [0 2 -2 0 0 0 0];
 
 internalField   uniform 0;
 
@@ -1644,11 +1683,16 @@ def detect_phases(case_dir=None):
     case = Path(case_dir) if case_dir else Path(CASE)
     phases = {}
 
-    # Method 1: transportProperties phaseNames
+    # Method 1: transportProperties phase list. The generator writes
+    # `phases (phase1 phase2)`; this regex looked for `phaseNames(...)`, which
+    # the generator never emits, so Method 1 was dead code and every case fell
+    # through to the generic metal/air fallback.
     tp = case / "constant" / "transportProperties"
     if tp.exists():
         txt = tp.read_text(errors="ignore")
-        m = re.search("phaseNames\\s*\\(([^)]+)\\)", txt)
+        m = re.search(r"\\bphases\\s*\\(([^)]+)\\)", txt)
+        if not m:
+            m = re.search(r"\\bphaseNames\\s*\\(([^)]+)\\)", txt)
         if m:
             names = m.group(1).split()
             for i, name in enumerate(names, 1):
@@ -1659,7 +1703,7 @@ def detect_phases(case_dir=None):
         zero_dir = case / "0"
         if zero_dir.is_dir():
             for f in sorted(zero_dir.glob("alpha.phase*")):
-                m = re.search("alpha\\.(phase\\d+)", f.name)
+                m = re.search(r"alpha\\.(phase\\d+)", f.name)
                 if m:
                     phases[m.group(1)] = "unknown"
 

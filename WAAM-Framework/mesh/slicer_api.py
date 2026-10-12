@@ -94,7 +94,11 @@ class AdvancedWAAMSlicer:
                  power: float = 3840.0,
                  dwell_time: float = 10.0,
                  start_reverse: bool = True,
-                 density_kg_m3: float = 7850.0):
+                 density_kg_m3: float = 7850.0,
+                 sub_lx: float = 150.0,
+                 sub_ly: float = 150.0,
+                 sub_hz: float = 5.0,
+                 build_height: float = 150.0):
         self.triangles = triangles
         self.h = max(float(layer_height), 0.2)
         self.w = max(float(bead_width), 0.5)
@@ -107,6 +111,12 @@ class AdvancedWAAMSlicer:
         self.dwell_time = max(float(dwell_time), 0.0)
         self.start_reverse = start_reverse
         self.density = density_kg_m3
+        # Enclosure / substrate placement. sub_hz must equal the solver's
+        # hz_base or the sliced part floats above the plate.
+        self.sub_lx = sub_lx
+        self.sub_ly = sub_ly
+        self.sub_hz = sub_hz
+        self.build_height = build_height
 
         # Compute bounding box
         all_pts = [pt for tri in triangles for pt in tri]
@@ -118,11 +128,17 @@ class AdvancedWAAMSlicer:
             raw_zmin = min(p[2] for p in all_pts)
             raw_zmax = max(p[2] for p in all_pts)
 
-            # Build enclosure limits: Substrate 150x150x15mm, Build volume 150mm above substrate
-            SUB_LX = 150.0
-            SUB_LY = 150.0
-            SUB_HZ = 15.0
-            BUILD_HEIGHT = 150.0
+            # Build enclosure limits. SUB_HZ MUST match the solver's hz_base
+            # (codegen default 5 mm): the slicer drops the part onto the plate
+            # top and the builder meshes the plate at hz_base, so a mismatch
+            # leaves the deposit floating above the substrate by |SUB_HZ -
+            # hz_base|. It was hardcoded to 15 mm while the builder moved to 5 mm
+            # in the thin-plate re-baseline, so every sliced part started 10 mm
+            # in mid-air.
+            SUB_LX = float(self.sub_lx)
+            SUB_LY = float(self.sub_ly)
+            SUB_HZ = float(self.sub_hz)
+            BUILD_HEIGHT = float(self.build_height)
             V_ENCLOSURE = SUB_LX * SUB_LY * BUILD_HEIGHT  # 3,375,000 mm^3
             MAX_OCCUPIED_VOL = 0.75 * V_ENCLOSURE       # 2,531,250 mm^3 (75% max volume)
 
@@ -148,8 +164,9 @@ class AdvancedWAAMSlicer:
                 raw_ymin *= scale_applied; raw_ymax *= scale_applied
                 raw_zmin *= scale_applied; raw_zmax *= scale_applied
 
-            # Auto-place correctly on top of 150x150x15mm base plate:
-            # Centered in X and Y, bottom resting on top of substrate (Z = 15.0 mm)
+            # Auto-place correctly on top of the substrate plate
+            # (default 150x150x5mm): centered in X and Y, bottom resting on
+            # top of the substrate (Z = SUB_HZ).
             cx = (raw_xmin + raw_xmax) / 2.0
             cy = (raw_ymin + raw_ymax) / 2.0
             min_z = raw_zmin
@@ -172,9 +189,9 @@ class AdvancedWAAMSlicer:
             self.zmax = raw_zmax + tz
             self.scale_applied = scale_applied
         else:
-            self.xmin, self.xmax = 0.0, 150.0
-            self.ymin, self.ymax = 0.0, 150.0
-            self.zmin, self.zmax = 15.0, 30.0
+            self.xmin, self.xmax = 0.0, self.sub_lx
+            self.ymin, self.ymax = 0.0, self.sub_ly
+            self.zmin, self.zmax = self.sub_hz, self.sub_hz + self.h
             self.scale_applied = 1.0
 
     def _intersect_edge_with_z(self, p1, p2, z):
@@ -205,10 +222,21 @@ class AdvancedWAAMSlicer:
         return segments
         
     @staticmethod
-    def _chain_segments_into_loops(segments, tol: float = 1.0) -> list:
-        """Chain unordered line segments into continuous ordered loops."""
+    def _chain_segments_into_loops(segments, tol: float = None) -> list:
+        """Chain unordered line segments into continuous ordered loops.
+
+        `tol` defaults to a fraction of the part size rather than a fixed 1 mm:
+        on a sub-millimetre bead nothing ever connected (every segment became
+        its own 2-point "loop"), and on a 150 mm plate unrelated ends inside a
+        1 mm gap were welded into one loop.
+        """
         if not segments:
             return []
+        if tol is None:
+            spans = [abs(a - b) for seg in segments
+                     for a, b in ((seg[0][0], seg[1][0]), (seg[0][1], seg[1][1]))]
+            span = max(spans) if spans else 1.0
+            tol = max(1.0e-3, 1.0e-3 * span)
         unvisited = list(segments)
         loops = []
         while unvisited:
@@ -242,6 +270,57 @@ class AdvancedWAAMSlicer:
             if len(chain) >= 3:
                 loops.append(chain)
         return loops
+
+
+    def _clip_segment_to_region(self, p0, p1, segments):
+        """Clip a straight lead against the layer cross-section.
+
+        Returns the list of sub-segments of p0->p1 that lie INSIDE the region
+        bounded by `segments` (closed contours). The previous cross-hatch code
+        only clamped the endpoints to the bounding box, which keeps the
+        straight chord and deposits material outside the part wherever the
+        cross-section is not convex.
+        """
+        dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+        if abs(dx) < 1e-15 and abs(dy) < 1e-15:
+            return []
+
+        ts = [0.0, 1.0]
+        for a, b in segments:
+            ex, ey = b[0] - a[0], b[1] - a[1]
+            denom = dx * ey - dy * ex
+            if abs(denom) < 1e-15:
+                continue
+            t = ((a[0] - p0[0]) * ey - (a[1] - p0[1]) * ex) / denom
+            u = ((a[0] - p0[0]) * dy - (a[1] - p0[1]) * dx) / denom
+            if -1e-9 <= t <= 1.0 + 1e-9 and -1e-9 <= u <= 1.0 + 1e-9:
+                ts.append(min(1.0, max(0.0, t)))
+        ts.sort()
+        uniq = []
+        for t in ts:
+            if not uniq or t - uniq[-1] > 1e-9:
+                uniq.append(t)
+
+        def inside(pt):
+            # even-odd ray cast to +x
+            crossings = 0
+            for a, b in segments:
+                if (a[1] > pt[1]) != (b[1] > pt[1]):
+                    x_cross = a[0] + (pt[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
+                    if x_cross > pt[0]:
+                        crossings += 1
+            return (crossings % 2) == 1
+
+        out = []
+        for i in range(len(uniq) - 1):
+            tv, tn = uniq[i], uniq[i + 1]
+            if tn - tv <= 1e-9:
+                continue
+            mid = (p0[0] + 0.5 * (tv + tn) * dx, p0[1] + 0.5 * (tv + tn) * dy)
+            if inside(mid):
+                out.append(((p0[0] + tv * dx, p0[1] + tv * dy),
+                            (p0[0] + tn * dx, p0[1] + tn * dy)))
+        return out
 
     def generate_toolpath_for_layer(self, z: float, layer_idx: int) -> List[Tuple[float, float, str]]:
         """
@@ -369,26 +448,27 @@ class AdvancedWAAMSlicer:
             for d_i in range(n_diag):
                 offset = d_i * step
                 if angle_sign == 1:
-                    x0, y0 = lx_min + offset, ly_min
-                    x1, y1 = lx_min, ly_min + offset
+                    p_start = (lx_min + offset, ly_min)
+                    p_end = (lx_min, ly_min + offset)
                 else:
-                    x0, y0 = lx_min + offset, ly_max
-                    x1, y1 = lx_min, ly_max - offset
+                    p_start = (lx_min + offset, ly_max)
+                    p_end = (lx_min, ly_max - offset)
 
-                # Clamp to bounding box
-                x0 = min(max(x0, lx_min), lx_max)
-                x1 = min(max(x1, lx_min), lx_max)
-                y0 = min(max(y0, ly_min), ly_max)
-                y1 = min(max(y1, ly_min), ly_max)
-
-                if (x0 - x1)**2 + (y0 - y1)**2 > (step * 0.5)**2:
-                    if direction == 1:
-                        toolpath.append((x0, y0, "G0"))
-                        toolpath.append((x1, y1, "G1"))
-                    else:
-                        toolpath.append((x1, y1, "G0"))
-                        toolpath.append((x0, y0, "G1"))
-                    direction *= -1
+                # CLIP the diagonal against the layer cross-section, do not
+                # clamp its ends to the bounding box. Clamping only moves the
+                # endpoints, so every diagonal kept a straight chord that ran
+                # outside the part near the corners (overbuild, deposited where
+                # the CAD is empty).
+                clipped = self._clip_segment_to_region(p_start, p_end, segments)
+                for (x0, y0), (x1, y1) in clipped:
+                    if (x0 - x1) ** 2 + (y0 - y1) ** 2 > (step * 0.25) ** 2:
+                        if direction == 1:
+                            toolpath.append((x0, y0, "G0"))
+                            toolpath.append((x1, y1, "G1"))
+                        else:
+                            toolpath.append((x1, y1, "G0"))
+                            toolpath.append((x0, y0, "G1"))
+                        direction *= -1
 
         # Fallback: simple zigzag
         else:
@@ -502,7 +582,9 @@ class AdvancedWAAMSlicer:
         lines.append("; End of WAAM G-code")
 
         output_path = str(Path(output_path).resolve())
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        parent = os.path.dirname(output_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(output_path, 'w') as f:
             f.write("\n".join(lines) + "\n")
 
@@ -530,6 +612,9 @@ class AdvancedWAAMSlicer:
 
         return {
             "output_file": output_path,
+            "toolpath_path": txt_path,
+            "layer_times_path": layer_times_path,
+            "scale_applied": getattr(self, "scale_applied", 1.0),
             "n_layers": layer_idx,
             "n_points": total_pts,
             "layer_height_mm": self.h,
@@ -547,8 +632,68 @@ class AdvancedWAAMSlicer:
             }
         }
 
+def _load_medit_mesh_triangles(mesh_path: str, sub_hz_mm: float = 5.0) -> List[Tuple[Tuple[float, float, float], Tuple[float, float, float], Tuple[float, float, float]]]:
+    """Parse surface triangles from a Medit .mesh file, keeping deposited geometry above substrate."""
+    vertices = []
+    triangles = []
+    with open(mesh_path, "r", errors="ignore") as f:
+        lines = f.readlines()
+
+    i = 0
+    n_lines = len(lines)
+    while i < n_lines:
+        line = lines[i].strip()
+        if line == "Vertices" and i + 1 < n_lines:
+            try:
+                n_verts = int(lines[i+1].strip())
+                for j in range(n_verts):
+                    parts = lines[i + 2 + j].split()
+                    if len(parts) >= 3:
+                        vertices.append((float(parts[0]), float(parts[1]), float(parts[2])))
+                i += 2 + n_verts
+            except Exception:
+                i += 1
+        elif line == "Triangles" and i + 1 < n_lines:
+            try:
+                n_tris = int(lines[i+1].strip())
+                for j in range(n_tris):
+                    parts = lines[i + 2 + j].split()
+                    if len(parts) >= 3:
+                        v1, v2, v3 = int(parts[0]) - 1, int(parts[1]) - 1, int(parts[2]) - 1
+                        if 0 <= v1 < len(vertices) and 0 <= v2 < len(vertices) and 0 <= v3 < len(vertices):
+                            triangles.append((v1, v2, v3))
+                i += 2 + n_tris
+            except Exception:
+                i += 1
+        else:
+            i += 1
+
+    if not vertices or not triangles:
+        return []
+
+    pts = np.array(vertices, dtype=np.float64)
+    spans = pts.max(axis=0) - pts.min(axis=0)
+    if spans.max() < 1.0:
+        pts *= 1000.0
+
+    out_tris = []
+    sub_cutoff = sub_hz_mm - 0.1
+    for v1, v2, v3 in triangles:
+        p1 = tuple(pts[v1])
+        p2 = tuple(pts[v2])
+        p3 = tuple(pts[v3])
+        if max(p1[2], p2[2], p3[2]) > sub_cutoff:
+            out_tris.append((p1, p2, p3))
+
+    if not out_tris:
+        for v1, v2, v3 in triangles:
+            out_tris.append((tuple(pts[v1]), tuple(pts[v2]), tuple(pts[v3])))
+
+    return out_tris
+
 
 def slice_geometry_to_toolpath(geometry_file: str, output_gcode: str,
+
                               layer_height: float = 3.0,
                               bead_width: float = 8.0,
                               infill_pattern: str = "zigzag",
@@ -558,7 +703,8 @@ def slice_geometry_to_toolpath(geometry_file: str, output_gcode: str,
                               rapid_feedrate: float = 3000.0,
                               power: float = 3840.0,
                               dwell_time: float = 10.0,
-                              start_reverse: bool = True) -> dict:
+                              start_reverse: bool = True,
+                              sub_hz: float = 5.0) -> dict:
     """
     High-level slicing API supporting STL, STEP, STP, IGES, IGS formats.
     """
@@ -590,8 +736,46 @@ def slice_geometry_to_toolpath(geometry_file: str, output_gcode: str,
             os.remove(temp_stl)
         except Exception:
             pass
+    elif suffix in ('.mesh', '.mesh3'):
+        # Check if source/sibling CAD file exists (e.g. original .stl / .step)
+        resolved_cad = None
+        cand_names = [p.stem]
+        if p.stem.startswith("imported_"):
+            cand_names.append(p.stem[len("imported_"):])
+        for cname in cand_names:
+            for ext in ('.stl', '.step', '.stp', '.ply', '.obj', '.iges', '.igs'):
+                for folder in [p.parent, p.parent.parent, Path("./stl"), Path(__file__).resolve().parent.parent / "stl"]:
+                    target = folder / (cname + ext)
+                    if target.exists():
+                        resolved_cad = target
+                        break
+                if resolved_cad:
+                    break
+            if resolved_cad:
+                break
+
+        if resolved_cad and resolved_cad.suffix.lower() != suffix:
+            return slice_geometry_to_toolpath(
+                geometry_file=str(resolved_cad),
+                output_gcode=output_gcode,
+                layer_height=layer_height,
+                bead_width=bead_width,
+                infill_pattern=infill_pattern,
+                overlap_pct=overlap_pct,
+                perimeters=perimeters,
+                feedrate=feedrate,
+                rapid_feedrate=rapid_feedrate,
+                power=power,
+                dwell_time=dwell_time,
+                start_reverse=start_reverse,
+                sub_hz=sub_hz
+            )
+        else:
+            # Parse surface triangles directly from Medit .mesh file
+            triangles = _load_medit_mesh_triangles(str(p), sub_hz_mm=sub_hz)
     else:
         raise ValueError(f"Unsupported geometry file format: {suffix}")
+
 
     slicer = AdvancedWAAMSlicer(
         triangles=triangles,
@@ -604,6 +788,7 @@ def slice_geometry_to_toolpath(geometry_file: str, output_gcode: str,
         rapid_feedrate=rapid_feedrate,
         power=power,
         dwell_time=dwell_time,
-        start_reverse=start_reverse
+        start_reverse=start_reverse,
+        sub_hz=sub_hz
     )
     return slicer.slice_to_gcode(output_gcode)

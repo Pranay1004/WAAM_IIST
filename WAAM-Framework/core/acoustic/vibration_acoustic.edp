@@ -1,4 +1,17 @@
 // ============================================================
+// STATUS: STANDALONE RESEARCH MODULE -- NOT WIRED INTO THE PIPELINE.
+// Nothing in run.py / gui / codegen executes this file end-to-end, so the
+// numbers below carry NO validation. Two known modelling shortcuts for
+// whoever wires it up:
+//   1. VSR uses a single sigmaY_RT = 350 MPa for every alloy (an aluminium
+//      build at ~150 MPa yield never relieves; a Ti-6Al-4V build at 880 MPa
+//      over-relieves). Make it alloy-dependent.
+//   2. |sigma_vm| is assembled from |sigma_ij| moduli, which ignores phase and
+//      is an upper bound, exact only for proportional response -- it is
+//      labelled as a bound, not a measurement, in the summary print.
+// ============================================================
+
+// ============================================================
 // ACOUSTIC / VIBRATION MODULE
 //
 // Three capabilities:

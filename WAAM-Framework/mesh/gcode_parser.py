@@ -71,6 +71,27 @@ def _parse_word(line: str, letter: str) -> Optional[float]:
     return None
 
 
+
+def _centre_from_radius(x0, y0, x1, y1, radius, clockwise):
+    """I/J-style centre offset for an R-format arc (G2/G3 ... R...).
+
+    Returns None when the radius is too small to span the chord.
+    """
+    dx, dy = x1 - x0, y1 - y0
+    chord = math.hypot(dx, dy)
+    if chord < 1e-12 or radius is None or abs(radius) < chord / 2.0 - 1e-9:
+        return None
+    h_sq = radius * radius - (chord / 2.0) ** 2
+    h = math.sqrt(max(h_sq, 0.0))
+    # sign of the radius selects the minor (negative) or major arc
+    sign = 1.0 if radius > 0 else -1.0
+    # perpendicular unit vector, oriented by direction and arc flavour
+    perp = (-dy / chord, dx / chord)
+    if (clockwise and sign > 0) or ((not clockwise) and sign < 0):
+        perp = (-perp[0], -perp[1])
+    mx, my = x0 + dx / 2.0 + perp[0] * h * sign, y0 + dy / 2.0 + perp[1] * h * sign
+    return mx - x0, my - y0
+
 def _arc_points(x0, y0, x1, y1, i_off, j_off, clockwise, n_segments=20):
     """Interpolate circular arc into line segments."""
     cx = x0 + i_off
@@ -159,7 +180,13 @@ def parse_gcode(filepath: str, layer_height: float = 3.0,
                     deposition_on = True
                 elif m_int == 5:      # spindle/arc OFF
                     deposition_on = False
-                continue
+                # A single line can still carry motion ("G1 X.. Y.. M3"), so the
+                # motion must be handled before `continue` -- dropping it moved
+                # the tool without depositing anything (silent skipped passes).
+                has_motion_words = any(_parse_word(line, ax) is not None
+                                       for ax in ('X', 'Y', 'Z'))
+                if not (has_motion_words and g_val is not None):
+                    continue
 
             # Handle coordinate mode
             if g_val is not None:
@@ -181,6 +208,7 @@ def parse_gcode(filepath: str, layer_height: float = 3.0,
             sv = _parse_word(line, 'S')
             iv = _parse_word(line, 'I')
             jv = _parse_word(line, 'J')
+            rv = _parse_word(line, 'R')
 
             if fv is not None:
                 current_feed = fv
@@ -222,19 +250,34 @@ def parse_gcode(filepath: str, layer_height: float = 3.0,
                 last_z = nz
 
             # Handle arcs (G2/G3)
-            if current_move in ("G2", "G3") and iv is not None and jv is not None:
-                clockwise = (current_move == "G2")
-                arc_pts = _arc_points(cx, cy, nx, ny,
-                                      iv if iv else 0.0,
-                                      jv if jv else 0.0,
-                                      clockwise)
+            arc_pts = None
+            if current_move in ("G2", "G3"):
+                i_off, j_off = iv or 0.0, jv or 0.0
+                if iv is None and jv is None and rv is not None:
+                    # R-format arc: radius given, centre implied. The old code
+                    # fell through to the linear branch, which turns every arc
+                    # into a chord (shorter path, wrong timing).
+                    i_off, j_off = _centre_from_radius(cx, cy, nx, ny, rv,
+                                                       current_move == "G2")
+                    if i_off is not None:
+                        arc_pts = _arc_points(cx, cy, nx, ny, i_off, j_off,
+                                              current_move == "G2")
+                    elif not getattr(toolpath, "_r_arc_warned", False):
+                        toolpath._r_arc_warned = True
+                        toolpath.warnings.append(
+                            "G2/G3 with R cannot be resolved (radius too small "
+                            "for the chord); substituted a straight chord.")
+                elif iv is not None or jv is not None:
+                    arc_pts = _arc_points(cx, cy, nx, ny, i_off, j_off,
+                                          current_move == "G2")
+
+            if arc_pts:
                 px, py = cx, cy
                 for (ax, ay) in arc_pts:
                     seg_len = math.sqrt((ax - px)**2 + (ay - py)**2)
                     if current_feed > 0:
                         current_time += (seg_len / current_feed) * 60.0
                     layer_path_length += seg_len
-
                     toolpath.points.append(ToolpathPoint(
                         x=ax, y=ay, z=nz,
                         feed_rate=current_feed,
@@ -249,7 +292,14 @@ def parse_gcode(filepath: str, layer_height: float = 3.0,
             else:
                 # Linear move (G0/G1)
                 seg_len = math.sqrt((nx - cx)**2 + (ny - cy)**2 + (nz - cz)**2)
-                feed = current_feed if current_move != "G0" else 6000.0
+                # A hardcoded 6000 mm/min rapid made every timing, total time
+                # and per-layer timing figure wrong whenever the machine's real
+                # rapid differed. Use the last F word for G0 too; fall back to
+                # 6000 only when the file never states one.
+                if current_move == "G0" and current_feed <= 0:
+                    feed = 6000.0
+                else:
+                    feed = current_feed
                 if feed > 0:
                     current_time += (seg_len / feed) * 60.0
                 layer_path_length += seg_len

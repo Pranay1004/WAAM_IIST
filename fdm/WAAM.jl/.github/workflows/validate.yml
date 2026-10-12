@@ -1,0 +1,34 @@
+name: Validation (paper reproduction)
+
+# Physics validation against Zargari et al. (2025). Long-running, so it is weekly and
+# manual. Results are reported, not gated on pull requests.
+on:
+  schedule:
+    - cron: "41 4 * * 0"
+  workflow_dispatch:
+    inputs:
+      quick:
+        description: "Short smoke run instead of the full 8-case matrix"
+        required: false
+        default: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.13"
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - name: Validation
+        run: julia --project=. test/validate/paper_cases.jl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-artifacts
+          path: |
+            validation_output/
+            waam_output/

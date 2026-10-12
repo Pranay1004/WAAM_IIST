@@ -340,8 +340,12 @@ def get_alloy_category(material_name: Optional[str]) -> str:
     if any(k in m for k in ["IN625", "IN718", "625", "718", "INCONEL", "HASTELLOY", "NICKEL", "MONEL", "WASPALOY"]):
         return "Nickel Superalloy"
 
-    # Aluminium detection
-    if any(k in m for k in ["ALSI", "4043", "5356", "6061", "2319", "ALUMIN", "AL-"]):
+    # Aluminium detection (bare "AL"/"AL1xxx" included: the database entry is
+    # literally "Pure Al (Al1xxx)", and the old keyword list missed it, so pure
+    # aluminium was classified as Carbon Steel and got steel kinetics, steel
+    # hardness and the steel SDAS law).
+    if any(k in m for k in ["ALSI", "4043", "5356", "6061", "2319", "ALUMIN",
+                            "AL-", "AL 1", "AL1", "PURE AL", "ALUMINIUM"]):
         return "Aluminium Alloy"
 
     # Carbon / Low-Alloy Steel

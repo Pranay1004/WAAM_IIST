@@ -1,0 +1,33 @@
+# =============================================================================
+# Wire Arc Additive Manufacturing (WAAM) Multi-Physics Framework
+# Universal Cross-Platform Requirements (macOS, Linux, WSL2, Windows)
+# =============================================================================
+
+# --- Core Numerical, Scientific & Array Computation ---
+numpy>=1.22.4,<2.0.0
+scipy>=1.10.0
+
+# --- Tabular Data & Metrics Analysis ---
+pandas>=2.0.0
+
+# --- 2D Plotting, Charts & LaTeX Report Generation ---
+matplotlib>=3.6.0
+pillow>=9.5.0
+imageio>=2.28.0
+
+# --- 3D Visualization, Mesh Processing & ParaView/VTK Interop ---
+# Note: On headless Linux / WSL2, run with: export LIBGL_ALWAYS_INDIRECT=0 or VTK_OFFSCREEN=1
+vtk>=9.2.0
+pyvista>=0.40.0
+trimesh[easy]>=3.22.0
+
+# --- Computational Geometry & Conformal Meshing ---
+# Precompiled Gmsh Python API bindings with OpenCASCADE support
+gmsh>=4.11.1
+
+# --- PDF Processing & Multi-Page Document Compilation ---
+PyMuPDF>=1.23.0
+
+# --- Code Quality & Testing ---
+pytest>=7.4.0
+ruff>=0.4.0

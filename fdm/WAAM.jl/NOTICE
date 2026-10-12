@@ -1,0 +1,26 @@
+Attribution
+===========
+
+This package implements published physical formulations. The following are reproduced
+from, and attributed to:
+
+  H. H. Zargari, S. A. Khajeh Mohammadilar, V. Ziaei Laleh (2025).
+  "A long-term and pragmatic numerical simulation of wire arc additively manufactured
+   ER70S6 and ER316L thin-wall via finite difference method."
+  Progress in Additive Manufacturing 10:11647-11663.
+  doi:10.1007/s40964-025-01307-x
+
+  Governing equations (1)-(16), the Sahoo-DebRoy pseudo-binary Fe-S surface tension
+  relation, the enthalpy-porosity phase-change formulation, the Darcy mushy-zone drag
+  law, the Gaussian arc heat-flux model, and the droplet source model.
+
+  P. Sahoo, T. Debroy, M. J. McNallan (1988). Metall. Trans. B 19:483-491.
+  Surface tension of binary metal-surface active solute systems.
+
+  P. Pichler et al. (2020, 2022). J. Mater. Sci. 55:4081-4093;
+  Int. J. Thermophys. 43. Thermophysical properties and surface tension of
+  NIST SRM 1155a (AISI 316L).
+
+Where the source paper is internally inconsistent or under-specified, the divergence is
+documented in docs/MASTER_PLAN.md and the behaviour is configurable rather than silently
+inherited.

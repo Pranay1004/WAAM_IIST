@@ -1,0 +1,28 @@
+{
+  "alloy_name": "Pure Nickel (Ni)",
+  "composition": "100% Ni",
+  "base_metal": "Ni",
+  "solidification_mode": "Single element dendritic",
+  "thermodynamics": {
+    "T_liquidus_K": 1728.0,
+    "T_solidus_K": 1728.0,
+    "delta_T0_K": 1.0,
+    "T_interpass_K": 300.0,
+    "latent_heat_J_kg": 297000.0,
+    "specific_heat_J_kg_K": 540.0,
+    "density_liquid_kg_m3": 7900.0,
+    "thermal_diffusivity_m2_s": 1.55e-5,
+    "interfacial_energy_J_m2": 0.37,
+    "molar_volume_m3_mol": 6.6e-6
+  },
+  "calphad_partitioning": {
+    "k_Ni": 1.0,
+    "liquidus_slope": 0.0
+  },
+  "acoustics": {
+    "sound_speed_liquid_m_s": 4300.0,
+    "blake_threshold_mpa": 0.70,
+    "attenuation_coeff_Np_m": 0.11,
+    "viscosity_liquid_Pa_s": 0.0050
+  }
+}

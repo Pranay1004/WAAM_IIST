@@ -1,0 +1,43 @@
+Referances 
+
+1 An_Introduction_to_Phase-Field_Modeling_of_Microst
+
+2 gerald
+
+3 Ulloa, J.; Wambacq, J.; Alessi, R.; Degrande, G.; François, S. Phase-field modeling of fatigue coupled to cyclic plasticity in an energetic formulation. Comput. Method. Appl. Mech. 2021, 373, 113473
+
+4 Biswas, S., Schwen, D., Wang, H., Okuniewski, M., & Tomar, V. (2018). Phase field modeling of sintering: Role of grain orientation and anisotropic properties. Computational Materials Science, 148, 307–319.
+
+
+5 programmimg
+
+6 foundray
+
+7 Penrose, O. and P. C. Fife (1990). Thermodynamically consistent models of phase-field type
+for the kinetic of phase transitions. Physica D, 43, 44–62
+
+8 Wang, S.-L. and R. Sekerka (1996a). Algorithms for phase field computation of the dendritic
+operating state at large supercoolings. Journal of Computational Physics, 127, 110–117.
+
+9  Karma, A., Y. Lee, and M. Plapp (2000). Three-dimensional dendrite-tip morphology at low
+undercooling. Physical Review E, 61, 3996–4006.
+
+
+10 Wheeler, A. A., W. J. Boettinger, and G. B. McFadden (1993). Phase field model of solute
+trapping during solidification. Physical Review E, 47(3), 1893–1909
+
+11  Warren, J. A. and W. J. Boettinger (1995). Prediction of dendritic growth and microsegregation patterns in a binary alloy using the phase field method. Acta Materialia, 43(2), 689–703.
+
+12 Kim, S. G., W. T. Kim, and T. Suzuki (1999). Phase-field model for binary alloys. Physical
+Review E, 60, 7186–7197
+
+13 Loginova, I., G. Amberg, and J. Agren (2001). Phase field simulations of non-isothermal
+binary alloy solidification. Acta Materialia, 49, 573–581.
+
+14 Kim, S. G. (2007). A phase-field model with antitrapping current for multicomponent alloys
+with arbitrary thermodynamic properties. Acta Materialia, 55, 4391–4399.
+
+15 Karma, A. (2001). Phase-field formulation for quantitative modeling of alloy solidification.
+Physial Review Letters, 87, 115701:1 – 115701:4.
+
+

@@ -1,0 +1,72 @@
+{
+  "0khz": {
+    "frequency_khz": 0,
+    "label": "0 kHz (Baseline)",
+    "regime": "No UVA (Baseline WAAM)",
+    "p_acoustic_mpa": 0.0,
+    "streaming_mps": 0.0,
+    "above_blake": false,
+    "total_grains": 20,
+    "substrate_grains": 16,
+    "equiaxed_nucleated": 4,
+    "cet_position_um": 91.0,
+    "mean_grain_um": 117.6,
+    "compute_time_s": 3.89
+  },
+  "1khz": {
+    "frequency_khz": 1,
+    "label": "1 kHz (Sub-cavitation (Streaming Dominant))",
+    "regime": "Sub-cavitation (Streaming Dominant)",
+    "p_acoustic_mpa": 0.35,
+    "streaming_mps": 0.00025043961347997643,
+    "above_blake": false,
+    "total_grains": 22,
+    "substrate_grains": 16,
+    "equiaxed_nucleated": 6,
+    "cet_position_um": 87.0,
+    "mean_grain_um": 117.7,
+    "compute_time_s": 4.04
+  },
+  "10khz": {
+    "frequency_khz": 10,
+    "label": "10 kHz (Low-Power Ultrasound (Cavitation Onset))",
+    "regime": "Low-Power Ultrasound (Cavitation Onset)",
+    "p_acoustic_mpa": 0.85,
+    "streaming_mps": 0.019233304448274095,
+    "above_blake": true,
+    "total_grains": 34,
+    "substrate_grains": 16,
+    "equiaxed_nucleated": 18,
+    "cet_position_um": 94.0,
+    "mean_grain_um": 118.6,
+    "compute_time_s": 4.64
+  },
+  "20khz": {
+    "frequency_khz": 20,
+    "label": "20 kHz (Standard Power Ultrasound (Vigorous Cavitation))",
+    "regime": "Standard Power Ultrasound (Vigorous Cavitation)",
+    "p_acoustic_mpa": 1.25,
+    "streaming_mps": 0.08,
+    "above_blake": true,
+    "total_grains": 62,
+    "substrate_grains": 16,
+    "equiaxed_nucleated": 46,
+    "cet_position_um": 52.0,
+    "mean_grain_um": 94.9,
+    "compute_time_s": 4.91
+  },
+  "30khz": {
+    "frequency_khz": 30,
+    "label": "30 kHz (Peak Resonant UVA (Intense Cavitation & Streaming))",
+    "regime": "Peak Resonant UVA (Intense Cavitation & Streaming)",
+    "p_acoustic_mpa": 1.4,
+    "streaming_mps": 0.16460571071502955,
+    "above_blake": true,
+    "total_grains": 69,
+    "substrate_grains": 16,
+    "equiaxed_nucleated": 53,
+    "cet_position_um": 103.0,
+    "mean_grain_um": 91.8,
+    "compute_time_s": 4.78
+  }
+}
